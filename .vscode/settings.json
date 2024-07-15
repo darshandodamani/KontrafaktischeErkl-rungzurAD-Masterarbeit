@@ -1,0 +1,20 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/selab/ros2_ws/install/turtlesim/local/lib/python3.10/dist-packages",
+        "/home/selab/ros2_ws/install/my_package/lib/python3.10/site-packages",
+        "/home/selab/ros_ws/install/turtlesim/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/home/selab/darshan/CARLA/carla/CARLA_0.9.15/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
+        "/home/selab/darshan/CARLA/carla/CARLA_0.9.15/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/selab/ros2_ws/install/turtlesim/local/lib/python3.10/dist-packages",
+        "/home/selab/ros2_ws/install/my_package/lib/python3.10/site-packages",
+        "/home/selab/ros_ws/install/turtlesim/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/home/selab/darshan/CARLA/carla/CARLA_0.9.15/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
+        "/home/selab/darshan/CARLA/carla/CARLA_0.9.15/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg"
+    ]
+}
