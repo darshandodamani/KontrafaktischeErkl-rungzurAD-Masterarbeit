@@ -4,7 +4,6 @@ import time
 import os
 import numpy as np
 import cv2
-from PIL import Image
 
 # Directory to save images
 output_dir = 'town7_dataset'
@@ -26,19 +25,19 @@ try:
     blueprint_library = world.get_blueprint_library()
     spawn_points = world.get_map().get_spawn_points()
 
-    # Choose a specific vehicle blueprint (Audi vehicle)
-    vehicle_bp = blueprint_library.find('vehicle.audi.a2')  # Example: Audi A2
-    spawn_point = random.choice(spawn_points)
+    # Choose a random start point
+    start_point = random.choice(spawn_points)  # Random start point
 
-    # Spawn the vehicle
-    vehicle = world.spawn_actor(vehicle_bp, spawn_point)
+    # Spawn the vehicle at the start point
+    vehicle_bp = blueprint_library.find('vehicle.audi.a2')
+    vehicle = world.spawn_actor(vehicle_bp, start_point)
     vehicle.set_autopilot(True)  # Enable autopilot
 
     # Set up the camera sensor
     camera_bp = blueprint_library.find('sensor.camera.rgb')
-    camera_bp.set_attribute('image_size_x', '800')
-    camera_bp.set_attribute('image_size_y', '600')
-    camera_bp.set_attribute('fov', '110')
+    camera_bp.set_attribute('image_size_x', '160')
+    camera_bp.set_attribute('image_size_y', '80')
+    camera_bp.set_attribute('fov', '125')
 
     # Attach the camera to the vehicle at the desired position
     camera_transform = carla.Transform(carla.Location(x=2.0, y=1.0, z=1.5), carla.Rotation(pitch=0, yaw=0, roll=0))
@@ -47,7 +46,7 @@ try:
     # Global variable to store the image
     image_array = None
 
-    # Define a callback function to save the images and display them
+    # Define a callback function to save the images
     def process_image(image):
         global image_array
         image.convert(carla.ColorConverter.Raw)
@@ -61,12 +60,14 @@ try:
 
     try:
         frame = 0
+
+        # Continuous data capture loop
         while True:
             world.tick()
-            time.sleep(0.5)  # Adjust as needed to control the rate of image capture
+            time.sleep(0.2)  # Capture images more frequently (adjust as needed)
 
             if image_array is not None:
-                image_name = os.path.join(output_dir, f"image_{frame:06d}.png")
+                image_name = os.path.join(output_dir, f"town7_{frame:06d}.png")
                 cv2.imwrite(image_name, image_array)
                 print(f"Saved {image_name}")
                 frame += 1
