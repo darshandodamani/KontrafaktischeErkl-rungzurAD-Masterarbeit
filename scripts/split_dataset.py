@@ -2,7 +2,7 @@ import os
 import random
 import shutil
 
-data_path = "town7_dataset/"
+data_path = "dataset/town7_dataset/"
 
 train_folder = os.path.join(data_path, 'train')
 test_folder = os.path.join(data_path, 'test')

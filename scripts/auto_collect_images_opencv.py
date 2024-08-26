@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 
 # Directory to save images
-output_dir = 'town7_dataset'
+output_dir = 'dataset/town7_dataset'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
