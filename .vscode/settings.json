@@ -16,5 +16,7 @@
         "/opt/ros/humble/local/lib/python3.10/dist-packages",
         "/home/selab/darshan/CARLA/carla/CARLA_0.9.15/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
         "/home/selab/darshan/CARLA/carla/CARLA_0.9.15/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true
 }
