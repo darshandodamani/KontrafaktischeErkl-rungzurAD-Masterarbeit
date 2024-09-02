@@ -2,13 +2,11 @@
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.png filter=lfs diff=lfs merge=lfs -text
 *.csv filter=lfs diff=lfs merge=lfs -text
-
 # Specific directories under dataset/town2_dataset and dataset/town7_dataset
 dataset/town2_dataset/*.png filter=lfs diff=lfs merge=lfs -text
 dataset/town7_dataset/*.png filter=lfs diff=lfs merge=lfs -text
 dataset/town2_dataset/*.csv filter=lfs diff=lfs merge=lfs -text
 dataset/town7_dataset/*.csv filter=lfs diff=lfs merge=lfs -text
-
 # Specific directories under dataset/town2_dataset and dataset/town7_dataset for train and test
 dataset/town7_dataset/train/*.csv filter=lfs diff=lfs merge=lfs -text
 dataset/town7_dataset/train/*.png filter=lfs diff=lfs merge=lfs -text
