@@ -11,13 +11,14 @@ from encoder import VariationalEncoder
 from decoder import Decoder
 import matplotlib.pyplot as plt
 import csv
+from PIL import Image  # Import PIL for image processing
 
 # Hyper-parameters
 NUM_EPOCHS = 100
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
-LATENT_SPACE = 128  # Latent space size
-KL_WEIGHT = 0.1  # Weight for the KL divergence term
+LATENT_SPACE = 256  # Latent space size
+KL_WEIGHT = 0.05  # Weight for the KL divergence term
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -109,7 +110,7 @@ def train(model, trainloader, optimizer, epoch):
                 plt.axis('off')
 
             plt.savefig(f'reconstructed_epoch_{epoch}.png')
-            plt.show()
+            #plt.show()
     
     return train_loss / len(trainloader.dataset)
 
@@ -156,7 +157,7 @@ def main():
     testloader = DataLoader(test_data, batch_size=BATCH_SIZE)
     
     model = VariationalAutoencoder(latent_dims=LATENT_SPACE).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     print(f'Selected device: {device}')
 
@@ -165,8 +166,14 @@ def main():
         writer.add_scalar("Training Loss/epoch", train_loss, epoch+1)
         val_loss = test(model, validloader)
         writer.add_scalar("Validation Loss/epoch", val_loss, epoch+1)
-        print('\nEPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, NUM_EPOCHS, train_loss, val_loss))
-        
+        print(f'\nEPOCH {epoch+1}/{NUM_EPOCHS} \t train loss: {train_loss:.3f} \t val loss: {val_loss:.3f}')
+    
     model.save()
 
-    
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit()
+    finally:
+        print('\nTerminating...')
