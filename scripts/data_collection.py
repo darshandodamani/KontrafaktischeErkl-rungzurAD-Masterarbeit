@@ -7,23 +7,29 @@ import cv2
 import csv
 
 # Directory to save images
-output_dir = 'dataset/town7_dataset'
+output_dir = 'dataset/town3_dataset'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # CSV file to store image filenames and control values
-csv_filename = os.path.join(output_dir, 'town7_data_log.csv')
+csv_filename = os.path.join(output_dir, 'town3_data_log.csv')
 
 # Connect to the CARLA server
+print("Connecting to CARLA server...")
 client = carla.Client('localhost', 2000)
 client.set_timeout(10.0)
+world = client.get_world()
+print(world.get_map().name)
 
 try:
     # Load Town 7
-    world = client.load_world('Town07')
+    print("Loading Town 03...")
+    world = client.load_world('Town03')
     settings = world.get_settings()
     settings.no_rendering_mode = False
     world.apply_settings(settings)
+    
+    print("World loaded. Spawning vehicle...")
 
     # Get the blueprint library and the spawn points
     blueprint_library = world.get_blueprint_library()
@@ -77,7 +83,7 @@ try:
                 time.sleep(0.2)  # Capture images more frequently (adjust as needed)
 
                 if image_array is not None:
-                    image_name = f"town7_{frame:06d}.png"
+                    image_name = f"town3_{frame:06d}.png"
                     image_path = os.path.join(output_dir, image_name)
                     cv2.imwrite(image_path, image_array)
                     print(f"Saved {image_name}")
@@ -107,3 +113,4 @@ try:
 
 except RuntimeError as e:
     print(f"Error: {e}")
+
