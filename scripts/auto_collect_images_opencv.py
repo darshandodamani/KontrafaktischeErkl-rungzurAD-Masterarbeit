@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 
 # Directory to save images
-output_dir = 'dataset/town7_dataset'
+output_dir = 'dataset/town3_dataset'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -16,7 +16,7 @@ client.set_timeout(10.0)
 
 try:
     # Load Town 7
-    world = client.load_world('Town07')
+    world = client.load_world('Town03')
     settings = world.get_settings()
     settings.no_rendering_mode = False
     world.apply_settings(settings)
@@ -67,7 +67,7 @@ try:
             time.sleep(0.2)  # Capture images more frequently (adjust as needed)
 
             if image_array is not None:
-                image_name = os.path.join(output_dir, f"town7_{frame:06d}.png")
+                image_name = os.path.join(output_dir, f"town3_{frame:06d}.png")
                 cv2.imwrite(image_name, image_array)
                 print(f"Saved {image_name}")
                 frame += 1
