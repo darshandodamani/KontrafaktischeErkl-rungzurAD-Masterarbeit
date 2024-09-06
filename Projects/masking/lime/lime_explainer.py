@@ -48,7 +48,7 @@ def batch_predict(images, model, transform):
 
 # Main function to perform LIME explanation
 def main():
-    image_path = "/home/selab/darshan/git-repos/dataset/town7_dataset/train/town7_000082.png"# Adjust to your image path
+    image_path = "/home/selab/darshan/git-repos/dataset/town7_dataset/train/town7_000260.png"# Adjust to your image path
     
     img = load_image(image_path)
     
