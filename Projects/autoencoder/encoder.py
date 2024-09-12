@@ -4,29 +4,40 @@ import torch.nn as nn
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
+
 class VariationalEncoder(nn.Module):
-    def __init__(self, latent_dims):  
+    def __init__(self, latent_dims):
         super(VariationalEncoder, self).__init__()
 
-        self.model_file = os.path.join('model', 'var_encoder_model.pth')
+        self.model_file = os.path.join("model", "var_encoder_model.pth")
 
         self.encoder_layer1 = nn.Sequential(
-            nn.Conv2d(3, 32, 4, stride=2),  # Input: 3 channels (RGB), Output: 32 channels
-            nn.LeakyReLU())
+            nn.Conv2d(
+                3, 32, 4, stride=2
+            ),  # Input: 3 channels (RGB), Output: 32 channels
+            nn.LeakyReLU(),
+        )
 
         self.encoder_layer2 = nn.Sequential(
-            nn.Conv2d(32, 64, 3, stride=2, padding=1),  # Input: 32 channels, Output: 64 channels
+            nn.Conv2d(
+                32, 64, 3, stride=2, padding=1
+            ),  # Input: 32 channels, Output: 64 channels
             nn.BatchNorm2d(64),
-            nn.LeakyReLU())
+            nn.LeakyReLU(),
+        )
 
         self.encoder_layer3 = nn.Sequential(
             nn.Conv2d(64, 128, 4, stride=2),  # Input: 64 channels, Output: 128 channels
-            nn.LeakyReLU())
+            nn.LeakyReLU(),
+        )
 
         self.encoder_layer4 = nn.Sequential(
-            nn.Conv2d(128, 256, 3, stride=2),  # Input: 128 channels, Output: 256 channels
+            nn.Conv2d(
+                128, 256, 3, stride=2
+            ),  # Input: 128 channels, Output: 256 channels
             nn.BatchNorm2d(256),
-            nn.LeakyReLU())
+            nn.LeakyReLU(),
+        )
 
         # Assuming input size is (3, 80, 160)
         self.flatten = nn.Flatten()
@@ -34,12 +45,19 @@ class VariationalEncoder(nn.Module):
         # Pass a dummy input to determine the output size
         with torch.no_grad():
             dummy_input = torch.zeros(1, 3, 80, 160)
-            dummy_output = self.encoder_layer4(self.encoder_layer3(self.encoder_layer2(self.encoder_layer1(dummy_input))))
+            dummy_output = self.encoder_layer4(
+                self.encoder_layer3(
+                    self.encoder_layer2(self.encoder_layer1(dummy_input))
+                )
+            )
             flattened_size = dummy_output.view(1, -1).size(1)
 
         self.linear = nn.Sequential(
-            nn.Linear(flattened_size, 1024),  # Adjust the input size according to the flattened dimension
-            nn.LeakyReLU())
+            nn.Linear(
+                flattened_size, 1024
+            ),  # Adjust the input size according to the flattened dimension
+            nn.LeakyReLU(),
+        )
 
         self.mu = nn.Linear(1024, latent_dims)
         self.sigma = nn.Linear(1024, latent_dims)
@@ -60,7 +78,7 @@ class VariationalEncoder(nn.Module):
         mu = self.mu(x)
         sigma = torch.exp(self.sigma(x))
         z = mu + sigma * self.N.sample(mu.shape)
-        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1 / 2).sum()
         return z
 
     def save(self):

@@ -1,16 +1,19 @@
 import torch
 import os
 import numpy as np
-from vae import VariationalAutoencoder, CustomImageDatasetWithLabels  # Import the VAE model and custom dataset class from vae.py
+from vae import (
+    VariationalAutoencoder,
+    CustomImageDatasetWithLabels,
+)  # Import the VAE model and custom dataset class from vae.py
 from torch.utils.data import DataLoader
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 
 # Path to the saved model and dataset
-model_path = 'model/var_autoencoder.pth'
-data_dir = 'dataset/town7_dataset/train/'
-csv_file = 'dataset/town7_dataset/train/labeled_train_data_log.csv'
+model_path = "model/var_autoencoder.pth"
+data_dir = "dataset/town7_dataset/train/"
+csv_file = "dataset/town7_dataset/train/labeled_train_data_log.csv"
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -20,12 +23,16 @@ model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 
 # Define transformations (if needed)
-data_transforms = transforms.Compose([
-    transforms.ToTensor(),
-])
+data_transforms = transforms.Compose(
+    [
+        transforms.ToTensor(),
+    ]
+)
 
 # Use the CustomImageDatasetWithLabels class to load your dataset
-dataset = CustomImageDatasetWithLabels(img_dir=data_dir, csv_file=csv_file, transform=data_transforms)
+dataset = CustomImageDatasetWithLabels(
+    img_dir=data_dir, csv_file=csv_file, transform=data_transforms
+)
 dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
 latent_vectors = []
@@ -49,11 +56,9 @@ latent_2d = tsne.fit_transform(latent_vectors)
 
 # Plot the latent space
 plt.figure(figsize=(8, 8))
-plt.scatter(latent_2d[:, 0], latent_2d[:, 1], c=labels, cmap='viridis')
+plt.scatter(latent_2d[:, 0], latent_2d[:, 1], c=labels, cmap="viridis")
 plt.colorbar()
-plt.title('Latent Space Visualization (t-SNE)')
-plt.xlabel('Dimension 1')
-plt.ylabel('Dimension 2')
+plt.title("Latent Space Visualization (t-SNE)")
+plt.xlabel("Dimension 1")
+plt.ylabel("Dimension 2")
 plt.show()
-
-

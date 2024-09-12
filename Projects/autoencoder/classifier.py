@@ -1,7 +1,8 @@
 # Projects/autoencoder/classifier.py
 
-import torch
+import torch  # noqa: F401
 import torch.nn as nn
+
 
 # Define a simple feedforward classifier
 class ClassifierModel(nn.Module):
@@ -15,5 +16,7 @@ class ClassifierModel(nn.Module):
     def forward(self, x):
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
-        x = self.fc3(x)  # No activation here, we will use CrossEntropyLoss that expects raw logits
+        x = self.fc3(
+            x
+        )  # No activation here, we will use CrossEntropyLoss that expects raw logits
         return x
