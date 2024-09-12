@@ -1,0 +1,35 @@
+[project]
+name = "counterfactual_explanation_project"
+version = "0.1.0"
+description = "A project for generating counterfactual explanations using VAE, LIME, and inpainting."
+requires-python = ">=3.9"
+
+# Project dependencies
+dependencies = [
+    "torch>=1.9.0",
+    "torchvision>=0.10.0",
+    "numpy>=1.21.0",
+    "pillow>=8.2.0",
+    "scikit-learn>=0.24.2",
+    "lime>=0.2.0.1"
+]
+
+# Development dependencies for testing and linting
+[tool.pytest.ini_options]
+addopts = "-v"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.flake8]
+exclude = ["venv", "venv-project"]
+max-line-length = 88
+
+[tool.mypy]
+files = "Projects/"
+ignore_missing_imports = true
+
+# If you're using uv
+[tool.uv]
+include = ["tests"]

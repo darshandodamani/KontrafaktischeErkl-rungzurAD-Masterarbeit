@@ -7,16 +7,16 @@ import cv2
 import csv
 
 # Directory to save images
-output_dir = 'dataset/town3_dataset'
+output_dir = "dataset/town3_dataset"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # CSV file to store image filenames and control values
-csv_filename = os.path.join(output_dir, 'town3_data_log.csv')
+csv_filename = os.path.join(output_dir, "town3_data_log.csv")
 
 # Connect to the CARLA server
 print("Connecting to CARLA server...")
-client = carla.Client('localhost', 2000)
+client = carla.Client("localhost", 2000)
 client.set_timeout(10.0)
 world = client.get_world()
 print(world.get_map().name)
@@ -24,11 +24,11 @@ print(world.get_map().name)
 try:
     # Load Town 7
     print("Loading Town 03...")
-    world = client.load_world('Town03')
+    world = client.load_world("Town03")
     settings = world.get_settings()
     settings.no_rendering_mode = False
     world.apply_settings(settings)
-    
+
     print("World loaded. Spawning vehicle...")
 
     # Get the blueprint library and the spawn points
@@ -39,18 +39,20 @@ try:
     start_point = random.choice(spawn_points)  # Random start point
 
     # Spawn the vehicle at the start point
-    vehicle_bp = blueprint_library.find('vehicle.audi.a2')
+    vehicle_bp = blueprint_library.find("vehicle.audi.a2")
     vehicle = world.spawn_actor(vehicle_bp, start_point)
     vehicle.set_autopilot(True)  # Enable autopilot
 
     # Set up the camera sensor
-    camera_bp = blueprint_library.find('sensor.camera.rgb')
-    camera_bp.set_attribute('image_size_x', '160')
-    camera_bp.set_attribute('image_size_y', '80')
-    camera_bp.set_attribute('fov', '125')
+    camera_bp = blueprint_library.find("sensor.camera.rgb")
+    camera_bp.set_attribute("image_size_x", "160")
+    camera_bp.set_attribute("image_size_y", "80")
+    camera_bp.set_attribute("fov", "125")
 
     # Attach the camera to the vehicle at the desired position
-    camera_transform = carla.Transform(carla.Location(x=2.0, y=1.0, z=1.5), carla.Rotation(pitch=0, yaw=0, roll=0))
+    camera_transform = carla.Transform(
+        carla.Location(x=2.0, y=1.0, z=1.5), carla.Rotation(pitch=0, yaw=0, roll=0)
+    )
     camera = world.spawn_actor(camera_bp, camera_transform, attach_to=vehicle)
 
     # Global variable to store the image
@@ -69,8 +71,8 @@ try:
     camera.listen(process_image)
 
     # Open CSV file for writing
-    with open(csv_filename, 'w', newline='') as csvfile:
-        fieldnames = ['image_filename', 'steering', 'throttle', 'brake']
+    with open(csv_filename, "w", newline="") as csvfile:
+        fieldnames = ["image_filename", "steering", "throttle", "brake"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -95,12 +97,14 @@ try:
                     brake = control.brake
 
                     # Save the data to the CSV file
-                    writer.writerow({
-                        'image_filename': image_name,
-                        'steering': steering,
-                        'throttle': throttle,
-                        'brake': brake
-                    })
+                    writer.writerow(
+                        {
+                            "image_filename": image_name,
+                            "steering": steering,
+                            "throttle": throttle,
+                            "brake": brake,
+                        }
+                    )
 
                     frame += 1
 
@@ -113,4 +117,3 @@ try:
 
 except RuntimeError as e:
     print(f"Error: {e}")
-
