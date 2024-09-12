@@ -4,3 +4,6 @@ venv-project/
 
 # Ignore generated file
 project_structure.txt
+
+# Byte-compilation and other optimizations
+__pycache__/
