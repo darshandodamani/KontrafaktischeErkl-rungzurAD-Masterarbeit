@@ -82,7 +82,7 @@ try:
             # Continuous data capture loop
             while True:
                 world.tick()
-                time.sleep(0.2)  # Capture images more frequently (adjust as needed)
+                time.sleep(0.2)  # Capture images more frequently ( as needed)
 
                 if image_array is not None:
                     image_name = f"town3_{frame:06d}.png"

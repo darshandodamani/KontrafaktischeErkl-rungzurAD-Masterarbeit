@@ -4,9 +4,9 @@ import numpy as np
 from vae import (
     VariationalAutoencoder,
     CustomImageDatasetWithLabels,
-)  # Import the VAE model and custom dataset class from vae.py
+)
 from torch.utils.data import DataLoader
-from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE  # t-SNE (t-distributed Stochastic Neighbor Embedding)
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 
@@ -29,7 +29,7 @@ data_transforms = transforms.Compose(
     ]
 )
 
-# Use the CustomImageDatasetWithLabels class to load your dataset
+# Use the CustomImageDatasetWithLabels class to load  dataset
 dataset = CustomImageDatasetWithLabels(
     img_dir=data_dir, csv_file=csv_file, transform=data_transforms
 )

@@ -10,22 +10,31 @@ import torchvision.transforms as transforms
 
 # Check if GPU is available, otherwise use CPU
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+print(f"Using device: {device}")
 
 # Load the trained VAE model
-vae_model = VariationalAutoencoder(latent_dims=256).to(device)
-vae_model.load_state_dict(torch.load("model/var_autoencoder.pth", map_location=device))
+vae_model = VariationalAutoencoder(latent_dims=128).to(device)
+vae_model.load_state_dict(
+    torch.load("model/var_autoencoder.pth", map_location=device, weights_only=True)
+)
+print("VAE model loaded successfully!")
 vae_model.eval()
 
 # Instantiate the classifier model
-classifier = ClassifierModel(input_size=256, hidden_size=128, output_size=2).to(device)
+classifier = ClassifierModel(input_size=128, hidden_size=128, output_size=2).to(device)
 
 # Load the classifier state dictionary
-classifier.load_state_dict(torch.load("model/classifier.pth", map_location=device))
+classifier.load_state_dict(
+    torch.load("model/classifier.pth", map_location=device, weights_only=True)
+)
+print("Classifier model loaded successfully!")
 classifier.eval()  # Set the classifier to evaluation mode
 
 # Load the test dataset
 data_dir = "dataset/town7_dataset/test/"
+print(f"Loading test dataset from: {data_dir}")
 csv_file = "dataset/town7_dataset/test/labeled_test_data_log.csv"
+print(f"Loading labels from: {csv_file}")
 data_transforms = transforms.Compose([transforms.ToTensor()])
 
 test_dataset = CustomImageDatasetWithLabels(
@@ -37,22 +46,23 @@ test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 all_preds = []
 all_labels = []
 
-for images, labels in test_loader:
-    images = images.to(device)
-    labels = labels.to(device)
+with torch.no_grad():
+    for images, labels in test_loader:
+        images = images.to(device)
+        labels = labels.to(device)
 
-    # Encode images into latent space
-    latent_vectors = vae_model.encoder(images)
+        # Encode images into latent space
+        _, _, latent_vectors = vae_model.encoder(images)
 
-    # Get classifier predictions on latent space
-    with torch.no_grad():
-        outputs = classifier(latent_vectors)
-        preds = torch.argmax(
-            outputs, dim=1
-        )  # Get the predicted class (0 for STOP, 1 for GO)
+        # Get classifier predictions on latent space
+        with torch.no_grad():
+            outputs = classifier(latent_vectors)
+            preds = torch.argmax(
+                outputs, dim=1
+            )  # Get the predicted class (0 for STOP, 1 for GO)
 
-    all_preds.extend(preds.cpu().numpy())
-    all_labels.extend(labels.cpu().numpy())
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
 
 # Convert to numpy arrays
 all_preds = np.array(all_preds)

@@ -9,7 +9,10 @@ class VariationalEncoder(nn.Module):
     def __init__(self, latent_dims):
         super(VariationalEncoder, self).__init__()
 
-        self.model_file = os.path.join("model", "var_encoder_model.pth")
+        self.model_file = os.path.join(
+            "model/100_epochs_95_LF/", "var_encoder_model.pth"
+        )
+        os.makedirs(os.path.dirname(self.model_file), exist_ok=True)
 
         self.encoder_layer1 = nn.Sequential(
             nn.Conv2d(
@@ -39,7 +42,7 @@ class VariationalEncoder(nn.Module):
             nn.LeakyReLU(),
         )
 
-        # Assuming input size is (3, 80, 160)
+        # Input size is (3, 80, 160)
         self.flatten = nn.Flatten()
 
         # Pass a dummy input to determine the output size
@@ -55,17 +58,16 @@ class VariationalEncoder(nn.Module):
         self.linear = nn.Sequential(
             nn.Linear(
                 flattened_size, 1024
-            ),  # Adjust the input size according to the flattened dimension
+            ),  # Input size depends on flattened dimension
             nn.LeakyReLU(),
         )
 
         self.mu = nn.Linear(1024, latent_dims)
-        self.sigma = nn.Linear(1024, latent_dims)
+        self.logvar = nn.Linear(1024, latent_dims)
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.to(device)
         self.N.scale = self.N.scale.to(device)
-        self.kl = 0
 
     def forward(self, x):
         x = x.to(device)
@@ -76,10 +78,10 @@ class VariationalEncoder(nn.Module):
         x = torch.flatten(x, start_dim=1)
         x = self.linear(x)
         mu = self.mu(x)
-        sigma = torch.exp(self.sigma(x))
-        z = mu + sigma * self.N.sample(mu.shape)
-        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1 / 2).sum()
-        return z
+        logvar = self.logvar(x)
+        std = torch.exp(0.5 * logvar)  # Calculate standard deviation
+        z = mu + std * self.N.sample(mu.shape)  # Reparameterization trick
+        return mu, logvar, z  # Return mu, logvar, and z for further calculations
 
     def save(self):
         torch.save(self.state_dict(), self.model_file)

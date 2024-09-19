@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 from mpl_toolkits.mplot3d import (
     Axes3D,
-)  # Import 3D plotting capabilities if you want 3D
+)  # Import 3D plotting capabilities if want 3D
 
 # Path to the saved model and dataset
 model_path = "model/var_autoencoder.pth"
@@ -32,7 +32,7 @@ data_transforms = transforms.Compose(
     ]
 )
 
-# Use the CustomImageDatasetWithLabels class to load your dataset
+# Use the CustomImageDatasetWithLabels class to load  dataset
 dataset = CustomImageDatasetWithLabels(
     img_dir=data_dir, csv_file=csv_file, transform=data_transforms
 )
@@ -66,7 +66,7 @@ plt.xlabel("Principal Component 1")
 plt.ylabel("Principal Component 2")
 plt.show()
 
-# If you want 3D PCA visualization:
+# If 3D PCA visualization:
 pca_3d = PCA(n_components=3)
 latent_3d_pca = pca_3d.fit_transform(latent_vectors)
 

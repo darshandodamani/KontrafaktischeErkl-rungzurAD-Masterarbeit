@@ -7,7 +7,7 @@ stop_threshold = (
 )
 go_threshold = 0.2  # If throttle > go_threshold, label as GO
 
-# Paths to your datasets
+# Paths to  datasets
 train_csv = "dataset/town7_dataset/train/train_data_log.csv"
 test_csv = "dataset/town7_dataset/test/test_data_log.csv"
 

@@ -30,7 +30,7 @@ data_transforms = transforms.Compose(
     ]
 )
 
-# Use the CustomImageDatasetWithLabels class to load your dataset
+# Use the CustomImageDatasetWithLabels class to load dataset
 dataset = CustomImageDatasetWithLabels(
     img_dir=data_dir, csv_file=csv_file, transform=data_transforms
 )
