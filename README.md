@@ -1,4 +1,4 @@
-# 🚗 Enhancing Autonomous Driving Explainability: A Counterfactual Approach Using Variational Auto Encoder and Local Interpretable Model-agnostic Explanations-Based Masking
+# 🚗 Enhancing Autonomous Driving Explainability: A Counterfactual Approach Using deep generative model, Masking, and inpainting techniques
 
 This thesis focuses on improving the **explainability** of autonomous driving decisions using **counterfactual analysis**. We employ a **Variational Autoencoder (VAE)** for dimensionality reduction and **Local Interpretable Model-agnostic Explanations (LIME)** to highlight important latent space features affecting the car’s STOP or GO decisions.
 
@@ -27,7 +27,7 @@ Modern AI-driven autonomous driving systems often act as **black boxes**, making
 
 ## 📊 System Workflow Diagram
 
-![System Workflow](visualization_output/flow_chart.png)  
+![System Workflow](visualization_output/methodology.png)  
 *This diagram shows how the data flows through the VAE, classifier, and LIME to generate counterfactual explanations.*
 
 ---
