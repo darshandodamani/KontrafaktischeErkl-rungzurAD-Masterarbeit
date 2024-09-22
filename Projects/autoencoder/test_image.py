@@ -7,28 +7,24 @@ from encoder import VariationalEncoder
 from decoder import Decoder
 from classifier import ClassifierModel as Classifier
 
-# Paths to  models
-encoder_path = "model/var_encoder_model.pth"
-decoder_path = "model/decoder_model.pth"
-classifier_path = "model/classifier.pth"
+# Paths to models
+encoder_path = "model/epochs_500_latent_128/var_encoder_model.pth"
+decoder_path = "model/epochs_500_latent_128/decoder_model.pth"
+classifier_path = "model/epochs_500_latent_128/classifier_final.pth"
 
 # Load the models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-encoder = VariationalEncoder(latent_dims=128).to(device)
-decoder = Decoder(latent_dims=128).to(device)
+encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(
+    device
+)  # Example latent dims
+decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
 classifier = Classifier().to(device)
 
-encoder.load_state_dict(
-    torch.load(encoder_path, map_location=device, weights_only=True)
-)
-decoder.load_state_dict(
-    torch.load(decoder_path, map_location=device, weights_only=True)
-)
-classifier.load_state_dict(
-    torch.load(classifier_path, map_location=device, weights_only=True)
-)
+encoder.load_state_dict(torch.load(encoder_path, map_location=device))
+decoder.load_state_dict(torch.load(decoder_path, map_location=device))
+classifier.load_state_dict(torch.load(classifier_path, map_location=device))
 
 encoder.eval()
 decoder.eval()
@@ -40,23 +36,21 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert("RGB")
     transform = transforms.Compose(
         [
-            transforms.Resize((160, 80)),
+            transforms.Resize((160, 80)),  # Assuming CARLA image size
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ]
     )
     return transform(image).unsqueeze(0).to(device)  # Add batch dimension
 
 
 # Function to test a single image
-def test_single_image(image_path):
+def test_single_image(image_path, actual_label):
     # Preprocess the image
     image = preprocess_image(image_path)
 
     # Pass image through the encoder to get latent representation
     with torch.no_grad():
-        # mu, logvar, latent_vector = encoder(image)
-        latent_vector = encoder(image)[2]  # Get only the latent vector z
+        latent_vector = encoder(image)[2]  # Get the latent vector z
 
         # Pass latent vector through the decoder to reconstruct the image
         reconstructed_image = decoder(latent_vector)
@@ -64,22 +58,28 @@ def test_single_image(image_path):
         # Get classifier prediction
         prediction = classifier(latent_vector)
 
-        # Print prediction (0 for STOP, 1 for GO)
+        # Print actual label and predicted label
         predicted_class = torch.argmax(prediction, dim=1).item()
+
         if predicted_class == 0:
-            print("Prediction: STOP")
+            predicted_label = "STOP"
         else:
-            print("Prediction: GO")
+            predicted_label = "GO"
 
-        return reconstructed_image, predicted_class
+        # Print actual vs predicted for cross-verification
+        actual_label_str = "STOP" if actual_label == 0 else "GO"
+        print(f"Image: {image_path}")
+        print(f"Actual: {actual_label_str}, Predicted: {predicted_label}")
+
+        return reconstructed_image, predicted_label
 
 
-# Function to visualize the original and reconstructed image
 def show_images(original_image_path, reconstructed_image):
     original_image = Image.open(original_image_path)
+    # Detach the reconstructed image from the computation graph
     reconstructed_image = (
-        reconstructed_image.cpu().squeeze().permute(1, 2, 0).numpy() * 0.5 + 0.5
-    )  # Un-normalize
+        reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
+    )
 
     fig, axs = plt.subplots(1, 2)
     axs[0].imshow(original_image)
@@ -91,9 +91,39 @@ def show_images(original_image_path, reconstructed_image):
     plt.show()
 
 
-# Test the image
-image_path = "dataset/town7_dataset/test/town7_000084.png"
-reconstructed_image, prediction = test_single_image(image_path)
+# Testing on batch of images
+def test_on_batch(test_loader):
+    for batch_idx, (images, labels, image_paths) in enumerate(test_loader):
+        images = images.to(device)
+        labels = labels.to(device)
 
-# Call the visualization function
-show_images(image_path, reconstructed_image)
+        # Pass through encoder and classifier
+        latent_vectors = encoder(images)[2]
+        predictions = classifier(latent_vectors)
+        predicted_classes = torch.argmax(predictions, dim=1)
+
+        for i in range(images.size(0)):
+            reconstructed_image = decoder(latent_vectors[i : i + 1])
+            actual_label = labels[i].item()
+            predicted_label = predicted_classes[i].item()
+
+            # Print the actual and predicted class for the image
+            actual_label_str = "STOP" if actual_label == 0 else "GO"
+            predicted_label_str = "STOP" if predicted_label == 0 else "GO"
+            print(f"Image: {image_paths[i]}")
+            print(f"Actual: {actual_label_str}, Predicted: {predicted_label_str}")
+
+            # Visualize the original and reconstructed image
+            show_images(image_paths[i], reconstructed_image)
+
+
+# Load test data and test the batch
+test_dataset = CustomImageDatasetWithLabels(
+    img_dir="dataset/town7_dataset/test/",
+    csv_file="dataset/town7_dataset/test/labeled_test_data_log.csv",
+    transform=transforms.Compose([transforms.ToTensor()]),
+)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True)
+
+# Test the batch
+test_on_batch(test_loader)

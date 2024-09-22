@@ -6,9 +6,13 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 
 
 class Decoder(nn.Module):
-    def __init__(self, latent_dims):
+    def __init__(self, latent_dims, num_epochs):
         super(Decoder, self).__init__()
-        self.model_file = os.path.join("model/100_epochs_95_LF/", "decoder_model.pth")
+
+        self.model_file = os.path.join(
+            f"model/epochs_{str(num_epochs)}_latent_{str(latent_dims)}/",
+            "decoder_model.pth",
+        )
         os.makedirs(os.path.dirname(self.model_file), exist_ok=True)
 
         # Fully connected layers to expand the latent vector
@@ -24,17 +28,23 @@ class Decoder(nn.Module):
         # Unflatten the latent vector to prepare for ConvTranspose layers
         self.unflatten = nn.Unflatten(dim=1, unflattened_size=(256, 4, 9))
 
-        # Transposed convolutions to upsample back to the original image size
+        # Transposed convolutions to upsample back to the original image size (80x160)
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2),  # (4x9) -> (9x19)
-            nn.LeakyReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2),  # (9x19) -> (19x39)
+            nn.ConvTranspose2d(
+                256, 128, kernel_size=4, stride=2, padding=1, output_padding=(0, 1)
+            ),  # Adjust output_padding
             nn.LeakyReLU(),
             nn.ConvTranspose2d(
-                64, 32, kernel_size=3, stride=2, padding=1
-            ),  # (19x39) -> (40x80)
+                128, 64, kernel_size=4, stride=2, padding=1, output_padding=(1, 1)
+            ),  # Adjust output_padding
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2),  # (40x80) -> (80x160)
+            nn.ConvTranspose2d(
+                64, 32, kernel_size=4, stride=2, padding=1, output_padding=(0, 0)
+            ),  # Adjust output_padding
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(
+                32, 3, kernel_size=4, stride=2, padding=1
+            ),  # Final layer: no output_padding
             nn.Sigmoid(),  # Sigmoid to output pixel values between 0 and 1
         )
 

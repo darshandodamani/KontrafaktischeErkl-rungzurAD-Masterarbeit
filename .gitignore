@@ -7,3 +7,16 @@ project_structure.txt
 
 # Byte-compilation and other optimizations
 __pycache__/
+
+# Ignore the run
+runs/
+
+# Ignore the uml    
+*.uml
+*.puml
+
+# Ignore the tox environment
+.tox/
+
+# Ignore .ini files
+*.ini
