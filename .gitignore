@@ -20,3 +20,6 @@ runs/
 
 # Ignore .ini files
 *.ini
+
+# cache files
+.cache/

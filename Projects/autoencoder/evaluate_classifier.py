@@ -7,15 +7,16 @@ from vae import VariationalAutoencoder, CustomImageDatasetWithLabels
 from classifier import ClassifierModel  # Import the classifier model
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+from sklearn.metrics import roc_curve, auc
 
 # Check if GPU is available, otherwise use CPU
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 print(f"Using device: {device}")
 
 # Load the trained VAE model
-vae_model = VariationalAutoencoder(latent_dims=128).to(device)
+vae_model = VariationalAutoencoder(latent_dims=128, num_epochs=50).to(device)  # Example value for num_epochs
 vae_model.load_state_dict(
-    torch.load("model/var_autoencoder.pth", map_location=device, weights_only=True)
+    torch.load("model/epochs_500_latent_128/var_autoencoder.pth", map_location=device, weights_only=True)
 )
 print("VAE model loaded successfully!")
 vae_model.eval()
@@ -25,7 +26,7 @@ classifier = ClassifierModel(input_size=128, hidden_size=128, output_size=2).to(
 
 # Load the classifier state dictionary
 classifier.load_state_dict(
-    torch.load("model/classifier.pth", map_location=device, weights_only=True)
+    torch.load("model/epochs_500_latent_128/classifier_final.pth", map_location=device, weights_only=True)
 )
 print("Classifier model loaded successfully!")
 classifier.eval()  # Set the classifier to evaluation mode
@@ -47,7 +48,7 @@ all_preds = []
 all_labels = []
 
 with torch.no_grad():
-    for images, labels in test_loader:
+    for images, labels, _ in test_loader:
         images = images.to(device)
         labels = labels.to(device)
 
@@ -96,6 +97,22 @@ recall = tp / (tp + fn) if (tp + fn) != 0 else 0
 f1_score = (
     2 * (precision * recall) / (precision + recall) if (precision + recall) != 0 else 0
 )
+
+# Compute ROC curve and AUC for class 1 (GO)
+fpr, tpr, _ = roc_curve(all_labels, all_preds, pos_label=1)
+roc_auc = auc(fpr, tpr)
+
+# Plot the ROC curve
+plt.figure()
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC)')
+plt.legend(loc='lower right')
+plt.show()
 
 print(f"Confusion Matrix:\n{conf_matrix}")
 print(f"True Positives (TP): {tp}")
