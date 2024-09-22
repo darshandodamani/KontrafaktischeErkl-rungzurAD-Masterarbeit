@@ -4,11 +4,11 @@ from PIL import Image as PilImage
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-from lime.lime_tabular import LimeTabularExplainer  # Use Tabular LIME for latent space
+from lime.lime_tabular import LimeTabularExplainer
 import numpy as np
 import matplotlib.pyplot as plt
 
-#  the Python path to include the directory where 'encoder.py' is located
+# Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder"))
 )
@@ -26,18 +26,13 @@ def load_image(image_path):
     return PilImage.open(image_path).convert("RGB")
 
 
-# Function to transform the image
-def transform_image(image, transform):
-    return transform(image).unsqueeze(0)
-
-
 # Load the VAE encoder and decoder models
 def load_vae_encoder():
-    encoder = VariationalEncoder(latent_dims=256).to(device)
+    encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(device)
     encoder.load_state_dict(
         torch.load(
-            "/home/selab/darshan/git-repos/model/var_encoder_model.pth",
-            map_location=device,
+            "/home/selab/darshan/git-repos/model/epochs_500_latent_128/var_encoder_model.pth",
+            map_location=device, weights_only=True,
         )
     )
     encoder.eval()
@@ -45,10 +40,11 @@ def load_vae_encoder():
 
 
 def load_vae_decoder():
-    decoder = Decoder(latent_dims=256).to(device)
+    decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
     decoder.load_state_dict(
         torch.load(
-            "/home/selab/darshan/git-repos/model/decoder_model.pth", map_location=device
+            "/home/selab/darshan/git-repos/model/epochs_500_latent_128/decoder_model.pth",
+            map_location=device, weights_only=True,
         )
     )
     decoder.eval()
@@ -57,12 +53,13 @@ def load_vae_decoder():
 
 # Load classifier
 def load_classifier():
-    classifier = ClassifierModel(input_size=256, hidden_size=128, output_size=2).to(
+    classifier = ClassifierModel(input_size=128, hidden_size=128, output_size=2).to(
         device
     )
     classifier.load_state_dict(
         torch.load(
-            "/home/selab/darshan/git-repos/model/classifier.pth", map_location=device
+            "/home/selab/darshan/git-repos/model/epochs_500_latent_128/classifier_final.pth",
+            map_location=device, weights_only=True,
         )
     )
     classifier.eval()
@@ -71,11 +68,9 @@ def load_classifier():
 
 # Get the latent vector from an image using the encoder
 def get_latent_vector(image, encoder, transform):
-    image_tensor = (
-        transform(image).unsqueeze(0).to(device)
-    )  # Convert image to tensor and add batch dimension
+    image_tensor = transform(image).unsqueeze(0).to(device)  # Convert image to tensor
     with torch.no_grad():
-        mu, logvar, z = encoder(image_tensor)  # Get the latent vector (mu, logvar, z)
+        _, _, z = encoder(image_tensor)  # Get the latent vector
     return z
 
 
@@ -89,7 +84,7 @@ def batch_predict_latent_space(latent_vectors, classifier):
 
 # Main function for LIME explanation
 def main():
-    image_path = "/home/selab/darshan/git-repos/dataset/town7_dataset/train/town7_011972.png"  #  to  image path
+    image_path = "/home/selab/darshan/git-repos/dataset/town7_dataset/test/town7_000692.png"  # Example image path
     img = load_image(image_path)
 
     # Load the encoder, decoder, and classifier
@@ -112,19 +107,19 @@ def main():
 
     # Use LIME Tabular Explainer to explain the classifier’s decision based on the latent space
     explainer = LimeTabularExplainer(
-        latent_vector_np.reshape(1, -1),  # Reshape latent vector for LIME
+        latent_vector_np.reshape(1, -1),
         feature_names=[f"latent_dim_{i}" for i in range(latent_vector_np.shape[0])],
-        class_names=["STOP", "GO"],  # binary classification
+        class_names=["STOP", "GO"],
         discretize_continuous=False,
     )
 
-    # Explain instance
+    # Explain the instance
     explanation = explainer.explain_instance(
         latent_vector_np,
         lambda x: batch_predict_latent_space(
-            torch.tensor(x).view(-1, 256).float().to(device), classifier
+            torch.tensor(x).view(-1, 128).float().to(device), classifier
         ),
-        num_features=20,
+        num_features=5,  # Explaining with more features
     )
 
     # Show the explanation
@@ -136,15 +131,15 @@ def main():
     ]
     print(f"Important features identified by LIME: {important_features}")
 
-    # Mask those important features (e.g., setting them to zero)
+    # Mask those important features
     masked_latent_vector = latent_vector.clone()
-    masked_latent_vector[:, important_features] = 0  # Mask important features
+    #masked_latent_vector[:, important_features] = 0  # Mask important features
 
     # Pass the masked latent vector to the decoder and reconstruct the image
     with torch.no_grad():
         reconstructed_image = decoder(masked_latent_vector)
 
-    # Display the reconstructed image after masking
+    # Display the original and reconstructed images
     plt.figure(figsize=(8, 4))
     plt.subplot(1, 2, 1)
     plt.imshow(img)
@@ -160,6 +155,14 @@ def main():
     # Print latent vectors before and after masking
     print(f"Original Latent Vector: {latent_vector}")
     print(f"Masked Latent Vector: {masked_latent_vector}")
+
+    # Classifier prediction on original and masked latent vector
+    with torch.no_grad():
+        original_pred = classifier(latent_vector)
+        masked_pred = classifier(masked_latent_vector)
+
+    print(f"Original Prediction: {torch.argmax(original_pred, dim=1).item()}")
+    print(f"Masked Prediction: {torch.argmax(masked_pred, dim=1).item()}")
 
 
 if __name__ == "__main__":

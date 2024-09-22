@@ -14,9 +14,15 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 print(f"Using device: {device}")
 
 # Load the trained VAE model
-vae_model = VariationalAutoencoder(latent_dims=128, num_epochs=50).to(device)  # Example value for num_epochs
+vae_model = VariationalAutoencoder(latent_dims=128, num_epochs=50).to(
+    device
+)  # Example value for num_epochs
 vae_model.load_state_dict(
-    torch.load("model/epochs_500_latent_128/var_autoencoder.pth", map_location=device, weights_only=True)
+    torch.load(
+        "model/epochs_500_latent_128/var_autoencoder.pth",
+        map_location=device,
+        weights_only=True,
+    )
 )
 print("VAE model loaded successfully!")
 vae_model.eval()
@@ -26,7 +32,11 @@ classifier = ClassifierModel(input_size=128, hidden_size=128, output_size=2).to(
 
 # Load the classifier state dictionary
 classifier.load_state_dict(
-    torch.load("model/epochs_500_latent_128/classifier_final.pth", map_location=device, weights_only=True)
+    torch.load(
+        "model/epochs_500_latent_128/classifier_final.pth",
+        map_location=device,
+        weights_only=True,
+    )
 )
 print("Classifier model loaded successfully!")
 classifier.eval()  # Set the classifier to evaluation mode
@@ -104,14 +114,14 @@ roc_auc = auc(fpr, tpr)
 
 # Plot the ROC curve
 plt.figure()
-plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
-plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.plot(fpr, tpr, color="darkorange", lw=2, label=f"ROC curve (area = {roc_auc:.2f})")
+plt.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--")
 plt.xlim([0.0, 1.0])
 plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('Receiver Operating Characteristic (ROC)')
-plt.legend(loc='lower right')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("Receiver Operating Characteristic (ROC)")
+plt.legend(loc="lower right")
 plt.show()
 
 print(f"Confusion Matrix:\n{conf_matrix}")
