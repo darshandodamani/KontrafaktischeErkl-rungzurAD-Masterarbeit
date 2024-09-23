@@ -32,7 +32,8 @@ def load_vae_encoder():
     encoder.load_state_dict(
         torch.load(
             "/home/selab/darshan/git-repos/model/epochs_500_latent_128/var_encoder_model.pth",
-            map_location=device, weights_only=True,
+            map_location=device,
+            weights_only=True,
         )
     )
     encoder.eval()
@@ -44,7 +45,8 @@ def load_vae_decoder():
     decoder.load_state_dict(
         torch.load(
             "/home/selab/darshan/git-repos/model/epochs_500_latent_128/decoder_model.pth",
-            map_location=device, weights_only=True,
+            map_location=device,
+            weights_only=True,
         )
     )
     decoder.eval()
@@ -59,7 +61,8 @@ def load_classifier():
     classifier.load_state_dict(
         torch.load(
             "/home/selab/darshan/git-repos/model/epochs_500_latent_128/classifier_final.pth",
-            map_location=device, weights_only=True,
+            map_location=device,
+            weights_only=True,
         )
     )
     classifier.eval()
@@ -133,7 +136,7 @@ def main():
 
     # Mask those important features
     masked_latent_vector = latent_vector.clone()
-    #masked_latent_vector[:, important_features] = 0  # Mask important features
+    # masked_latent_vector[:, important_features] = 0  # Mask important features
 
     # Pass the masked latent vector to the decoder and reconstruct the image
     with torch.no_grad():

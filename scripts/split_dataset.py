@@ -3,8 +3,8 @@ import random
 import shutil
 import csv
 
-data_path = "dataset/town7_dataset/"
-csv_file = os.path.join(data_path, "data_log.csv")
+data_path = "dataset/town10_dataset/"
+csv_file = os.path.join(data_path, "town10_data_log.csv")
 
 train_folder = os.path.join(data_path, "train")
 test_folder = os.path.join(data_path, "test")
@@ -35,11 +35,9 @@ for folder_path in [train_folder, test_folder]:
         os.makedirs(folder_path)
 
 # Open CSV files for train and test sets
-with (
-    open(csv_file, "r") as original_csv,
-    open(train_csv, "w", newline="") as train_csvfile,
-    open(test_csv, "w", newline="") as test_csvfile,
-):
+with open(csv_file, "r") as original_csv, open(
+    train_csv, "w", newline=""
+) as train_csvfile, open(test_csv, "w", newline="") as test_csvfile:
     reader = csv.DictReader(original_csv)
     train_writer = csv.DictWriter(train_csvfile, fieldnames=reader.fieldnames)
     test_writer = csv.DictWriter(test_csvfile, fieldnames=reader.fieldnames)
@@ -48,7 +46,7 @@ with (
     test_writer.writeheader()
 
     # Split the images into training and testing sets
-    for i, row in enumerate(reader):
+    for row in reader:
         image_filename = row["image_filename"]
         if image_filename in image_list[:train_size]:
             dest_folder = train_folder

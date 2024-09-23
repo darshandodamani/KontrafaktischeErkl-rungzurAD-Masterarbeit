@@ -22,9 +22,15 @@ encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(
 decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
 classifier = Classifier().to(device)
 
-encoder.load_state_dict(torch.load(encoder_path, map_location=device))
-decoder.load_state_dict(torch.load(decoder_path, map_location=device))
-classifier.load_state_dict(torch.load(classifier_path, map_location=device))
+encoder.load_state_dict(
+    torch.load(encoder_path, map_location=device, weights_only=True)
+)
+decoder.load_state_dict(
+    torch.load(decoder_path, map_location=device, weights_only=True)
+)
+classifier.load_state_dict(
+    torch.load(classifier_path, map_location=device, weights_only=True)
+)
 
 encoder.eval()
 decoder.eval()

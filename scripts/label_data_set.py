@@ -8,12 +8,12 @@ stop_threshold = (
 go_threshold = 0.2  # If throttle > go_threshold, label as GO
 
 # Paths to  datasets
-train_csv = "dataset/town7_dataset/train/train_data_log.csv"
-test_csv = "dataset/town7_dataset/test/test_data_log.csv"
+train_csv = "dataset/town10_dataset/train/train_data_log.csv"
+test_csv = "dataset/town10_dataset/test/test_data_log.csv"
 
 # Output paths for labeled data
-train_output_csv = "dataset/town7_dataset/train/labeled_train_data_log.csv"
-test_output_csv = "dataset/town7_dataset/test/labeled_test_data_log.csv"
+train_output_csv = "dataset/town10_dataset/train/labeled_train_data_log.csv"
+test_output_csv = "dataset/town10_dataset/test/labeled_test_data_log.csv"
 
 
 def label_data(input_csv, output_csv):

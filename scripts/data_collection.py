@@ -7,12 +7,12 @@ import cv2
 import csv
 
 # Directory to save images
-output_dir = "dataset/town3_dataset"
+output_dir = "dataset/town10_dataset"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # CSV file to store image filenames and control values
-csv_filename = os.path.join(output_dir, "town3_data_log.csv")
+csv_filename = os.path.join(output_dir, "town10_data_log.csv")
 
 # Connect to the CARLA server
 print("Connecting to CARLA server...")
@@ -23,8 +23,9 @@ print(world.get_map().name)
 
 try:
     # Load Town 7
-    print("Loading Town 03...")
-    world = client.load_world("Town03")
+    print("Loading Town 10...")
+    world = client.load_world("Town10HD")
+    print(world.get_map().name)
     settings = world.get_settings()
     settings.no_rendering_mode = False
     world.apply_settings(settings)
@@ -45,8 +46,8 @@ try:
 
     # Set up the camera sensor
     camera_bp = blueprint_library.find("sensor.camera.rgb")
-    camera_bp.set_attribute("image_size_x", "160")
-    camera_bp.set_attribute("image_size_y", "80")
+    camera_bp.set_attribute("image_size_x", "256")
+    camera_bp.set_attribute("image_size_y", "256")
     camera_bp.set_attribute("fov", "125")
 
     # Attach the camera to the vehicle at the desired position
@@ -85,7 +86,7 @@ try:
                 time.sleep(0.2)  # Capture images more frequently ( as needed)
 
                 if image_array is not None:
-                    image_name = f"town3_{frame:06d}.png"
+                    image_name = f"town10_{frame:06d}.png"
                     image_path = os.path.join(output_dir, image_name)
                     cv2.imwrite(image_path, image_array)
                     print(f"Saved {image_name}")
