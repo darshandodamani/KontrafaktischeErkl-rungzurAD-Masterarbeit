@@ -23,3 +23,6 @@ runs/
 
 # cache files
 .cache/
+
+#temp ignore town10_dataset folder
+dataset/town10_dataset/

@@ -125,8 +125,8 @@ def test_on_batch(test_loader):
 
 # Load test data and test the batch
 test_dataset = CustomImageDatasetWithLabels(
-    img_dir="dataset/town7_dataset/test/",
-    csv_file="dataset/town7_dataset/test/labeled_test_data_log.csv",
+    img_dir="dataset/town7_dataset/train/",
+    csv_file="dataset/town7_dataset/train/labeled_train_data_log.csv",
     transform=transforms.Compose([transforms.ToTensor()]),
 )
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True)
