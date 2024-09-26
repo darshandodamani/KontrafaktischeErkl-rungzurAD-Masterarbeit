@@ -1,3 +1,4 @@
+[![Board Status](https://dev.azure.com/CounterfactualExplanation/849d14e9-1103-4f47-82eb-c77f8aad9878/fb04f564-0229-4a28-91cf-4d0e3e7b893b/_apis/work/boardbadge/0310d38e-b69f-4b47-b016-b34a0b5d078c)](https://dev.azure.com/CounterfactualExplanation/849d14e9-1103-4f47-82eb-c77f8aad9878/_boards/board/t/fb04f564-0229-4a28-91cf-4d0e3e7b893b/Microsoft.RequirementCategory)
 # 🚗 Enhancing Autonomous Driving Explainability: A Counterfactual Approach Using deep generative model, Masking, and inpainting techniques
 
 This thesis focuses on improving the **explainability** of autonomous driving decisions using **counterfactual analysis**. We employ a **Variational Autoencoder (VAE)** for dimensionality reduction and **Local Interpretable Model-agnostic Explanations (LIME)** to highlight important latent space features affecting the car’s STOP or GO decisions.
