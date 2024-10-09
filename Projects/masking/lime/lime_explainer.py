@@ -71,6 +71,20 @@ def load_classifier():
 
 # Get the latent vector from an image using the encoder
 def get_latent_vector(image, encoder, transform):
+    """
+    Generates the latent vector for a given image using a specified encoder and transformation.
+
+    Args:
+        image (PIL.Image or numpy.ndarray): The input image to be transformed and encoded.
+        encoder (torch.nn.Module): The encoder model used to generate the latent vector.
+        transform (callable): A function or transform that converts the image to a tensor.
+
+    Returns:
+        torch.Tensor: The latent vector obtained from the encoder.
+
+    Note:
+        The image is first transformed into a tensor and then passed through the encoder to get the latent vector.
+    """
     image_tensor = transform(image).unsqueeze(0).to(device)  # Convert image to tensor
     with torch.no_grad():
         _, _, z = encoder(image_tensor)  # Get the latent vector
@@ -79,6 +93,16 @@ def get_latent_vector(image, encoder, transform):
 
 # LIME's batch predict function for latent space
 def batch_predict_latent_space(latent_vectors, classifier):
+    """
+    Predicts the class probabilities for a batch of latent vectors using the classifier.
+
+    Args:
+        latent_vectors (torch.Tensor): A batch of latent vectors to be classified.
+        classifier (torch.nn.Module): The classifier model used to predict class probabilities.
+
+    Returns:
+        numpy.ndarray: The predicted class probabilities for each latent vector in the batch.
+    """
     with torch.no_grad():
         outputs = classifier(latent_vectors)
         probs = F.softmax(outputs, dim=1)
@@ -87,7 +111,7 @@ def batch_predict_latent_space(latent_vectors, classifier):
 
 # Main function for LIME explanation
 def main():
-    image_path = "/home/selab/darshan/git-repos/dataset/town7_dataset/test/town7_000692.png"  # Example image path
+    image_path = "/home/selab/darshan/git-repos/dataset/town7_dataset/train/town7_012099.png"  # Example image path
     img = load_image(image_path)
 
     # Load the encoder, decoder, and classifier
@@ -126,7 +150,7 @@ def main():
     )
 
     # Show the explanation
-    print("Explanation:", explanation.as_list())
+    print("Explanation:", explanation)
 
     # Extract numeric indices of important features
     important_features = [
@@ -136,7 +160,7 @@ def main():
 
     # Mask those important features
     masked_latent_vector = latent_vector.clone()
-    # masked_latent_vector[:, important_features] = 0  # Mask important features
+    masked_latent_vector[:, important_features] = 0  # Mask important features
 
     # Pass the masked latent vector to the decoder and reconstruct the image
     with torch.no_grad():
