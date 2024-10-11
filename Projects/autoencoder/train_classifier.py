@@ -5,11 +5,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
+import os
 from vae import (
     VariationalAutoencoder,
     CustomImageDatasetWithLabels,
 )  # Import the VAE and dataset class
-from classifier import ClassifierModel  # Import the classifier model
+from classifier import ClassifierModel  # Import the improved classifier model
 import matplotlib.pyplot as plt
 
 # Device configuration
@@ -21,18 +22,26 @@ hidden_size = 128
 output_size = 2  # STOP or GO
 num_epochs = 20
 learning_rate = 0.001
+dropout_rate = 0.5  # Dropout rate for the classifier
 batch_size = 128  # Match batch size from VAE training
 
 # Load the trained VAE model
 vae_model = VariationalAutoencoder(latent_dims=input_size, num_epochs=500).to(device)
 vae_model.load_state_dict(
-    torch.load("model/epochs_500_latent_128/var_autoencoder.pth", map_location=device)
+    torch.load(
+        "model/epochs_500_latent_128/var_autoencoder.pth",
+        map_location=device,
+        weights_only=True,
+    )
 )
 vae_model.eval()  # Set VAE model to evaluation mode (important for inference)
 
-# Instantiate the classifier
+# Instantiate the improved classifier
 classifier = ClassifierModel(
-    input_size=input_size, hidden_size=hidden_size, output_size=output_size
+    input_size=input_size,
+    hidden_size=hidden_size,
+    output_size=output_size,
+    dropout_rate=dropout_rate,
 ).to(device)
 
 # Loss and optimizer
@@ -133,4 +142,11 @@ plt.legend()
 
 plt.tight_layout()
 plt.savefig("classifier_training_loss_accuracy.png")
+# Create directory if it doesn't exist
+os.makedirs("plots/classifier_plots/", exist_ok=True)
+
+# Save the plot in the specified directory
+plt.savefig(
+    f"plots/classifier_plots/classifier_training_loss_accuracy_for_{num_epochs}_epochs_{input_size}_LF.png"
+)
 plt.show()

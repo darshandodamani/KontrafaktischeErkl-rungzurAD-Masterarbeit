@@ -1,0 +1,38 @@
+digraph ClassifierModel {
+	node [height=.1 shape=record]
+	Input [label="Input Layer
+(128 features)"]
+	FC1 [label="Fully Connected Layer
+(128 neurons)"]
+	BN1 [label="Batch Norm Layer
+(128)"]
+	ReLU1 [label="Leaky ReLU Activation"]
+	Dropout1 [label="Dropout Layer"]
+	FC2 [label="Fully Connected Layer
+(128 neurons)"]
+	BN2 [label="Batch Norm Layer
+(128)"]
+	ReLU2 [label="Leaky ReLU Activation"]
+	Dropout2 [label="Dropout Layer"]
+	FC3 [label="Fully Connected Layer
+(128 neurons)"]
+	BN3 [label="Batch Norm Layer
+(128)"]
+	ReLU3 [label="Leaky ReLU Activation"]
+	Dropout3 [label="Dropout Layer"]
+	Output [label="Output Layer
+(2 classes: STOP/GO)"]
+	Input -> FC1
+	FC1 -> BN1
+	BN1 -> ReLU1
+	ReLU1 -> Dropout1
+	Dropout1 -> FC2
+	FC2 -> BN2
+	BN2 -> ReLU2
+	ReLU2 -> Dropout2
+	Dropout2 -> FC3
+	FC3 -> BN3
+	BN3 -> ReLU3
+	ReLU3 -> Dropout3
+	Dropout3 -> Output
+}

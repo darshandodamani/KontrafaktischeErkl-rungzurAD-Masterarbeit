@@ -1,9 +1,14 @@
 import torch
 import numpy as np
-from sklearn.metrics import confusion_matrix, accuracy_score
+from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score
 import seaborn as sns
 import matplotlib.pyplot as plt
-from vae import VariationalAutoencoder, CustomImageDatasetWithLabels
+from vae import (
+    LATENT_SPACE,
+    NUM_EPOCHS,
+    VariationalAutoencoder,
+    CustomImageDatasetWithLabels,
+)
 from classifier import ClassifierModel  # Import the classifier model
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
@@ -95,7 +100,11 @@ sns.heatmap(
 plt.xlabel("Predicted")
 plt.ylabel("True")
 plt.title("Confusion Matrix")
-plt.show()
+plt.savefig(
+    f"plots/classifier_plots/confusion_matrix_for_{NUM_EPOCHS}_epochs_{LATENT_SPACE}_LF.png"
+)  # Save the plot dynamically
+print(f"Confusion matrix for {NUM_EPOCHS} epochs {LATENT_SPACE} LF saved successfully!")
+plt.close()
 
 # Calculate TP, FP, TN, FN from the Confusion Matrix
 tn, fp, fn, tp = conf_matrix.ravel()  # Extract TN, FP, FN, TP from the confusion matrix
@@ -112,7 +121,7 @@ f1_score = (
 fpr, tpr, _ = roc_curve(all_labels, all_preds, pos_label=1)
 roc_auc = auc(fpr, tpr)
 
-# Plot the ROC curve
+# Save ROC Curve
 plt.figure()
 plt.plot(fpr, tpr, color="darkorange", lw=2, label=f"ROC curve (area = {roc_auc:.2f})")
 plt.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--")
@@ -122,7 +131,10 @@ plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
 plt.title("Receiver Operating Characteristic (ROC)")
 plt.legend(loc="lower right")
-plt.show()
+plt.savefig(
+    f"plots/classifier_plots/roc_curve_for_{NUM_EPOCHS}_epochs_{LATENT_SPACE}_LF.png"
+)
+plt.close()
 
 print(f"Confusion Matrix:\n{conf_matrix}")
 print(f"True Positives (TP): {tp}")
@@ -133,3 +145,4 @@ print(f"Accuracy: {accuracy:.4f}")
 print(f"Precision: {precision:.4f}")
 print(f"Recall: {recall:.4f}")
 print(f"F1 Score: {f1_score:.4f}")
+print(f"ROC AUC: {roc_auc:.4f}")
