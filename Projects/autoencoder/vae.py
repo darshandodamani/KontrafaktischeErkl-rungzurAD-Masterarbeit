@@ -247,11 +247,28 @@ def save_reconstructions(model, trainloader, epoch):
 
 # Function to encode images in base64 for hover text
 def encode_image(image_path):
-    pil_img = Image.open(image_path)
-    buff = BytesIO()
-    pil_img.save(buff, format="PNG")
-    img_str = base64.b64encode(buff.getvalue()).decode("utf-8")
-    return f'<img src="data:image/png;base64,{img_str}" width="100" height="100">'
+    """
+    Encodes an image located at the given path into a base64 string.
+
+    This function reads an image from the specified path, converts it to a
+    base64-encoded string, and formats it as an HTML image tag. This is useful
+    for embedding images directly into HTML content, such as hover text in
+    interactive plots.
+
+    Args:
+        image_path (str): The file path to the image to be encoded.
+
+    Returns:
+        str: A base64-encoded string representing the image, formatted as an
+             HTML <img> tag with specified width and height.
+    """
+    pil_img = Image.open(image_path)  # Open the image file
+    buff = BytesIO()  # Create a buffer to hold the image data
+    pil_img.save(buff, format="PNG")  # Save the image data to the buffer in PNG format
+    img_str = base64.b64encode(buff.getvalue()).decode(
+        "utf-8"
+    )  # Encode the buffer data to base64
+    return f'<img src="data:image/png;base64,{img_str}" width="100" height="100">'  # Format as HTML <img> tag
 
 
 # Function to generate latent space visualization with image hovers and colored by label
