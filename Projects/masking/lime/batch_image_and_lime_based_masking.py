@@ -72,8 +72,7 @@ def get_actual_label(csv_file, image_path):
     return actual_label
 
 # Test the function
-# image_path = "dataset/town7_dataset/test/town7_009628.png"
-image_path = "dataset/town7_dataset/test/town7_008508.png"
+image_path = "dataset/town7_dataset/test/town7_009628.png"
 csv_file = "dataset/town7_dataset/test/labeled_test_data_log.csv"
 
 # Get the label from the CSV
@@ -181,7 +180,7 @@ def apply_lime_on_latent_space(latent_vector, classifier):
     explanation = explainer.explain_instance(
         latent_vector_np,
         lambda x: F.softmax(classifier(torch.tensor(x).view(-1, 128).float().to(device)), dim=1).cpu().detach().numpy(),
-        num_features= 5 # Adjust number of features as needed
+        num_features= 28 # Adjust number of features as needed
     )
 
     return explanation
@@ -216,24 +215,76 @@ def mask_latent_features(latent_vector, important_features, method="zero"):
     return masked_latent
 
 # 5. Function to save and visualize images
-def save_images(original_image, reconstructed_image, reconstruction_loss, method, actual_label, predicted_label, image_name):
+# Function to save and visualize images before and after masking
+def save_images(original_image, reconstructed_image_before_masking, reconstructed_image_after_masking, reconstruction_loss_before, reconstruction_loss_after, method, actual_label, predicted_label_before, predicted_label_after, image_name):
     # Ensure the results directory exists
-    results_dir = "results"
+    results_dir = "plots/reconstruction"
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    
+
+    # Convert tensors to numpy arrays for visualization
     original_image_np = original_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
-    reconstructed_image_np = reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    reconstructed_before_np = reconstructed_image_before_masking.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
+    reconstructed_after_np = reconstructed_image_after_masking.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
+
+    # Create a figure with 3 subplots: original, reconstructed before masking, and reconstructed after masking
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    
+    # Plot original image
     axs[0].imshow(original_image_np)
-    axs[0].set_title(f"Original Image (Label: {'STOP' if actual_label == 0 else 'GO'})")
-    axs[1].imshow(reconstructed_image_np)
-    axs[1].set_title(f"Reconstructed Image ({method})\nLoss: {reconstruction_loss:.4f} (Pred: {predicted_label})")
+    axs[0].set_title(f"Original Image\nLabel: {'STOP' if actual_label == 0 else 'GO'}")
     
-    # Save the image in the results directory
+    # Plot reconstructed image before masking
+    axs[1].imshow(reconstructed_before_np)
+    axs[1].set_title(f"Reconstructed Before Masking\nLoss: {reconstruction_loss_before:.4f}\nPred: {predicted_label_before}")
+    
+    # Plot reconstructed image after masking
+    axs[2].imshow(reconstructed_after_np)
+    axs[2].set_title(f"Reconstructed After Masking ({method})\nLoss: {reconstruction_loss_after:.4f}\nPred: {predicted_label_after}")
+    
+    # Save the figure in the results directory
     plt.savefig(f"{results_dir}/{method}_reconstruction_{image_name}.png")
-    # plt.show()
+    plt.show()
     
+# Define the global results table
+results = []
+
+# Append the results for each image and masking method
+def append_results(image_name, image_size, recon_loss_before, recon_loss_after, masking_method, num_features, important_features, important_feature_values_before, important_feature_values_after, prediction_change):
+    results.append({
+        "Image Name": image_name,
+        "Image Size": str(image_size),  # Format the image size as a string
+        "Reconstruction Loss Before Masking": round(recon_loss_before, 6),  # Limit the precision for losses
+        "Reconstruction Loss After Masking": round(recon_loss_after, 6),
+        "Masking Method": masking_method,  # Method used for masking
+        "Number of Features Masked": num_features,  # Number of important features masked
+        "Important Features Masked": important_features,  # List of important features
+        "Important Features Values Before Masking": important_feature_values_before,  # Values before masking
+        "Important Features Values After Masking": important_feature_values_after,  # Values after masking
+        "Prediction Changed After Masking": prediction_change  # True/False if prediction changed
+    })
+
+# Process and append results for each masking method
+def process_results(image_name, image_size, recon_loss_before, recon_loss_after, method, important_features, original_prediction, masked_prediction, masked_latent_vector):
+    # Check if the prediction changed
+    prediction_changed = original_prediction != masked_prediction
+
+    # Number of important features identified
+    num_features = len(important_features)
+
+    # Append the result to the table
+    append_results(
+        image_name=image_name,
+        image_size=image_size,
+        recon_loss_before=recon_loss_before,
+        recon_loss_after=recon_loss_after,
+        masking_method=method,
+        num_features=num_features,
+        important_features=important_features,
+        important_feature_values_before=latent_vector[:, important_features].cpu().numpy().tolist(),
+        important_feature_values_after=masked_latent_vector[:, important_features].cpu().numpy().tolist(),
+        prediction_change=prediction_changed
+    )
     
 # Main function to test a single image with LIME and masking
 def test_single_image(image_path, csv_file):
@@ -254,14 +305,14 @@ def test_single_image(image_path, csv_file):
         reconstruction_loss = F.mse_loss(reconstructed_image_resized, image).item()
         print(f"Reconstruction Loss (Without Masking): {reconstruction_loss}")
 
-        save_images(image, reconstructed_image, reconstruction_loss, "original", actual_label, predicted_label, os.path.basename(image_path))
+        save_images(image, reconstructed_image, reconstructed_image, reconstruction_loss, reconstruction_loss, "original", actual_label, predicted_label, predicted_label, os.path.basename(image_path))
 
         explanation = apply_lime_on_latent_space(latent_vector, classifier)
         important_features = [int(feature.split("_")[-1]) for feature, _ in explanation.as_list()]
         print(f"Important features identified by LIME: {important_features}")
 
         # for method in ["zero", "median", "random"]:
-        for method in ["zero"]:
+        for method in ["median"]:
             masked_latent_vector = mask_latent_features(latent_vector, important_features, method)
             masked_prediction = classifier(masked_latent_vector)
             masked_class = torch.argmax(masked_prediction, dim=1).item()
@@ -273,209 +324,32 @@ def test_single_image(image_path, csv_file):
             masked_reconstruction_loss = F.mse_loss(masked_reconstructed_image_resized, image).item()
             print(f"Reconstruction Loss after Masking with ({method}) method: {masked_reconstruction_loss}")
 
-            save_images(image, masked_reconstructed_image, masked_reconstruction_loss, method, actual_label, masked_label_str, os.path.basename(image_path))
+            save_images(image, reconstructed_image, masked_reconstructed_image, reconstruction_loss, masked_reconstruction_loss, method, actual_label, predicted_label, masked_label_str, os.path.basename(image_path))
+            # **Add result to the table**
+            process_results(
+                image_name=os.path.basename(image_path),
+                image_size=image.shape[2:],  # Shape of the input image
+                recon_loss_before=reconstruction_loss,
+                recon_loss_after=masked_reconstruction_loss,
+                method=method,
+                important_features=important_features,
+                original_prediction=original_class,
+                masked_prediction=masked_class,
+                masked_latent_vector=masked_latent_vector
+            )
 
-test_single_image("dataset/town7_dataset/test/town7_008508.png", "dataset/town7_dataset/test/labeled_test_data_log.csv")
+# After testing, print and save the results to a CSV
+def print_and_save_results():
+    # Create a DataFrame from the results list
+    results_df = pd.DataFrame(results)
+    print("\nFinal Interpretation Results:")
+    print(results_df)
 
-# # Main function to test single image with LIME and masking
-# def test_single_image(image_path, actual_label):
-#     image = preprocess_image(image_path)
-#     with torch.no_grad():
-#         # Step 1: Get the latent vector from the encoder
-#         latent_vector = encoder(image)[2]
-#         print(f"Original Latent Vector:\n {latent_vector}")
-        
-#         # Step 2: Get original prediction from the classifier
-#         original_prediction = classifier(latent_vector)
-#         original_class = torch.argmax(original_prediction, dim=1).item()
-#         original_label_str = "STOP" if original_class == 0 else "GO"
-#         print(f"Original Prediction: {original_label_str}")
-        
-#         print("--------------------")
-        
-#         # Step 3: Apply LIME to get important features
-#         explanation = apply_lime_on_latent_space(latent_vector, classifier)
-#         print("Important features identified by LIME:")
-#         important_features = [int(feature.split("_")[-1]) for feature, _ in explanation.as_list()]
-#         print(important_features)
-        
-#         # Step 4: Masking the latent features and checking classification
-#         for method in ["median"]:
-#         #for method in ["zero", "median", "random"]:
-#             masked_latent_vector = mask_latent_features(latent_vector, important_features, method)
-            
-#             # Step 5: Get prediction after masking
-#             masked_prediction = classifier(masked_latent_vector)
-#             masked_class = torch.argmax(masked_prediction, dim=1).item()
-#             masked_label_str = "STOP" if masked_class == 0 else "GO"
-#             print(f"Masked Prediction ({method}): {masked_label_str}")
-            
-#             # Step 6: Decode the masked latent vector into an image
-#             reconstructed_image = decoder(masked_latent_vector)
-            
-#             # Step 7: Compute losses
-#             # Resize the reconstructed image to match the original input dimensions before calculating MSE loss
-#             reconstructed_image_resized = F.interpolate(
-#                 reconstructed_image,
-#                 size=image.shape[2:],  # Resize to match the input image size
-#                 mode="bilinear",       # Interpolation mode
-#                 align_corners=False
-#             )
+    # Save the DataFrame to a CSV file
+    results_df.to_csv("plots/reconstruction/masking_analysis_results.csv", index=False)
 
-#             # Now compute the MSE loss between the resized reconstructed image and the original input image
-#             reconstruction_loss = F.mse_loss(reconstructed_image_resized, image).item()
-#             classification_diff = (original_class != masked_class)
+# Test the function
+test_single_image("dataset/town7_dataset/test/town7_009628.png", "dataset/town7_dataset/test/labeled_test_data_log.csv")
 
-#             print(f"Reconstruction Loss ({method}): {reconstruction_loss}")
-#             print(f"Classification Change ({method}): {classification_diff}")
-
-#             # Visualize the original and reconstructed images
-#             show_images(image, reconstructed_image, reconstruction_loss, method)
-
-
-    
-
-# # Function to test a single image with loss calculation and display
-# def test_single_image(image_path, actual_label):
-#     # Preprocess the image
-#     image = preprocess_image(image_path)
-
-#     # Pass image through the encoder to get latent representation
-#     with torch.no_grad():
-#         latent_vector = encoder(image)[2]  # Get the latent vector z
-
-#         # Pass latent vector through the decoder to reconstruct the image
-#         reconstructed_image = decoder(latent_vector)
-
-#         # Calculate reconstruction loss (e.g., MSE Loss)
-#         reconstruction_loss = F.mse_loss(reconstructed_image, image)
-
-#         # Get classifier prediction
-#         prediction = classifier(latent_vector)
-
-#         # Print actual label and predicted label
-#         predicted_class = torch.argmax(prediction, dim=1).item()
-
-#         if predicted_class == 0:
-#             predicted_label = "STOP"
-#         else:
-#             predicted_label = "GO"
-
-#         # Print actual vs predicted for cross-verification
-#         actual_label_str = "STOP" if actual_label == 0 else "GO"
-#         print(f"Image: {image_path}")
-#         print(f"Actual: {actual_label_str}, Predicted: {predicted_label}")
-#         print(f"Reconstruction Loss: {reconstruction_loss.item()}")
-
-#         return image, reconstructed_image, reconstruction_loss.item(), predicted_label
-
-
-# # Function to display the original and reconstructed images
-# def show_images(original_image, reconstructed_image, image_path, reconstruction_loss):
-#     # Convert tensors to numpy arrays for display
-#     original_image = original_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
-#     reconstructed_image = (
-#         reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
-#     )
-
-#     # Plot images side by side
-#     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-#     axs[0].imshow(original_image)
-#     axs[0].set_title("Original Image")
-#     axs[1].imshow(reconstructed_image)
-#     axs[1].set_title(f"Reconstructed Image\nLoss: {reconstruction_loss:.4f}")
-
-#     #plt.savefig(f"plots/reconstruction/reconstruction_{image_path.split('/')[-1]}.png")
-#     plt.show()
-
-
-# # Global list to store reconstruction losses
-# reconstruction_losses = []
-
-
-# def plot_loss():
-#     """Plot the reconstruction loss after the testing process is interrupted or completed."""
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(reconstruction_losses, label="Reconstruction Loss")
-#     plt.xlabel("Image Index")
-#     plt.ylabel("Loss")
-#     plt.title("Reconstruction Loss for Each Image")
-#     plt.legend()
-#     plt.savefig("plots/reconstruction_loss_over_batch.png")
-#     plt.show()
-
-
-# # Signal handler to handle interruption (Ctrl+C) and plot the graph
-# def signal_handler(sig, frame):
-#     print("Process interrupted. Saving the plot of reconstruction loss...")
-#     plot_loss()
-#     sys.exit(0)
-
-
-# signal.signal(signal.SIGINT, signal_handler)  # Catch interruption signal (Ctrl+C)
-
-
-# # Testing on batch of images
-# def test_on_batch(test_loader):
-#     try:
-#         for batch_idx, (images, labels, image_paths) in enumerate(test_loader):
-#             images = images.to(device)
-#             labels = labels.to(device)
-
-#             # Pass through encoder and classifier
-#             latent_vectors = encoder(images)[2]
-#             predictions = classifier(latent_vectors)
-#             predicted_classes = torch.argmax(predictions, dim=1)
-
-#             for i in range(images.size(0)):
-#                 reconstructed_image = decoder(latent_vectors[i : i + 1])
-
-#                 # Resize the reconstructed image to match the original input dimensions
-#                 reconstructed_image = F.interpolate(
-#                     reconstructed_image,
-#                     size=images[i : i + 1].shape[2:],
-#                     mode="bilinear",
-#                     align_corners=False,
-#                 )
-
-#                 actual_label = labels[i].item()
-#                 predicted_label = predicted_classes[i].item()
-
-#                 # Calculate reconstruction loss
-#                 reconstruction_loss = F.mse_loss(reconstructed_image, images[i : i + 1])
-
-#                 # Print the actual and predicted class for the image
-#                 actual_label_str = "STOP" if actual_label == 0 else "GO"
-#                 predicted_label_str = "STOP" if predicted_label == 0 else "GO"
-#                 print(f"Image: {image_paths[i]}")
-#                 print(f"Actual: {actual_label_str}, Predicted: {predicted_label_str}")
-#                 print(f"Reconstruction Loss: {reconstruction_loss.item()}")
-
-#                 # Store the reconstruction loss for plotting
-#                 reconstruction_losses.append(reconstruction_loss.item())
-
-#                 # Visualize the original and reconstructed image
-#                 show_images(
-#                     images[i],
-#                     reconstructed_image,
-#                     image_paths[i],
-#                     reconstruction_loss.item(),
-#                 )
-
-#     except Exception as e:
-#         print(f"Error encountered during testing: {e}")
-#     finally:
-#         # Always plot the graph when the function exits
-#         plot_loss()
-
-
-# # Load test data and test the batch
-# test_dataset = CustomImageDatasetWithLabels(
-#     img_dir="dataset/town7_dataset/test/",
-#     csv_file="dataset/town7_dataset/test/labeled_test_data_log.csv",
-#     transform=transforms.Compose([transforms.ToTensor()]),
-# )
-# test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True)
-
-# # Test the batch
-# test_on_batch(test_loader)
+#to print and save results
+print_and_save_results()
