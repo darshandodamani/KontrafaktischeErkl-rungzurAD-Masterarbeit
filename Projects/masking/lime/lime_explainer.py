@@ -146,7 +146,7 @@ def main():
         lambda x: batch_predict_latent_space(
             torch.tensor(x).view(-1, 128).float().to(device), classifier
         ),
-        num_features=5,  # Explaining with more features
+        num_features=10,  # Explaining with more features
     )
 
     # Show the explanation

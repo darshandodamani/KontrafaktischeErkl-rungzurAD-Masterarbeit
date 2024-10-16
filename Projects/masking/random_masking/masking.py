@@ -126,7 +126,6 @@ def main():
 
     # Get the latent vector from the image
     latent_vector = get_latent_vector(img, encoder, transform)
-    
 
     # Randomly mask some features in the latent vector
     num_features_to_mask = 90
@@ -138,29 +137,36 @@ def main():
         reconstructed_image = decoder(masked_latent_vector)
 
     # save the reconstructed image
-    plt.imsave("reconstructed_image.png", reconstructed_image.squeeze().permute(1, 2, 0).cpu().numpy())
-    
-    #load the reconstructed image
+    plt.imsave(
+        "reconstructed_image.png",
+        reconstructed_image.squeeze().permute(1, 2, 0).cpu().numpy(),
+    )
+
+    # load the reconstructed image
     reconst_img = load_image("reconstructed_image.png")
-    
-    #send the reconstructed image to the encoder
+
+    # send the reconstructed image to the encoder
     reconstructed_latent_vector = get_latent_vector(reconst_img, encoder, transform)
-    
+
     original_loss = torch.nn.MSELoss()
     original_mse = original_loss(latent_vector, reconstructed_latent_vector)
-    print(f"MSE Loss between original and reconstructed latent vectors: {original_mse.item()}") 
-    
-    #calculate the MSE loss between the masked and reconstructed latent vector
+    print(
+        f"MSE Loss between original and reconstructed latent vectors: {original_mse.item()}"
+    )
+
+    # calculate the MSE loss between the masked and reconstructed latent vector
     loss = torch.nn.MSELoss()
     mse = loss(masked_latent_vector, reconstructed_latent_vector)
-    print(f"MSE Loss between masked and reconstructed latent vectors: {mse.item()}") 
-    
+    print(f"MSE Loss between masked and reconstructed latent vectors: {mse.item()}")
+
     original_loss = torch.nn.MSELoss()
     loss_bw_original_masked = original_loss(latent_vector, masked_latent_vector)
-    print(f"MSE Loss between original and masked latent vectors: {loss_bw_original_masked.item()}")
-    
-    #compare the loss with a origi
-    
+    print(
+        f"MSE Loss between original and masked latent vectors: {loss_bw_original_masked.item()}"
+    )
+
+    # compare the loss with a origi
+
     # Display the original and reconstructed images
     plt.figure(figsize=(8, 4))
     plt.subplot(1, 2, 1)
@@ -173,16 +179,13 @@ def main():
     plt.title("Reconstructed Image (Masked Latent)")
     plt.axis("off")
     plt.show()
-    
-    
-    
-    
-    
 
     # Print the predictions before and after masking
     original_pred = torch.argmax(classifier(latent_vector), dim=1).item()
     masked_pred = torch.argmax(classifier(masked_latent_vector), dim=1).item()
-    reconstructed_image_pred = torch.argmax(classifier(reconstructed_latent_vector), dim=1).item()
+    reconstructed_image_pred = torch.argmax(
+        classifier(reconstructed_latent_vector), dim=1
+    ).item()
 
     print(f"Original Prediction: {'STOP' if original_pred == 0 else 'GO'}")
     print(f"Masked Prediction: {'STOP' if masked_pred == 0 else 'GO'}")
@@ -193,7 +196,9 @@ def main():
         "Original Prediction": ["STOP" if original_pred == 0 else "GO"],
         "Masked Prediction": ["STOP" if masked_pred == 0 else "GO"],
         "Masked Indices": [mask_indices],
-        "Reconstructed Image Prediction": ["STOP" if reconstructed_image_pred == 0 else "GO"],
+        "Reconstructed Image Prediction": [
+            "STOP" if reconstructed_image_pred == 0 else "GO"
+        ],
         "Latent Vector Before Masking": [latent_vector.cpu().numpy().tolist()],
         "Latent Vector After Masking": [masked_latent_vector.cpu().numpy().tolist()],
     }
