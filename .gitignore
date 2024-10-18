@@ -2,18 +2,11 @@
 venv/   
 venv-project/   
 
-# Ignore generated file
-project_structure.txt
-
 # Byte-compilation and other optimizations
 __pycache__/
 
 # Ignore the run
 runs/
-
-# Ignore the uml    
-*.uml
-*.puml
 
 # Ignore the tox environment
 .tox/
@@ -27,3 +20,9 @@ runs/
 #temp ignore town10_dataset folder
 dataset/town10_dataset/
 dataset/town6_dataset/
+
+# Ignore the .vscode folder
+.vscode/
+
+# Ignore the settings file
+settings.json
