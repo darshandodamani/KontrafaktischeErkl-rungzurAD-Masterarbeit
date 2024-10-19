@@ -19,7 +19,7 @@ runs/
 
 #temp ignore town10_dataset folder
 dataset/town10_dataset/
-dataset/town6_dataset/
+dataset/Town06_dataset/
 
 # Ignore the .vscode folder
 .vscode/

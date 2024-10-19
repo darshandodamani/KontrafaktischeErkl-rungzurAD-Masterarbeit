@@ -1,1 +1,3 @@
-carla
+pandas==2.2.2
+matplotlib==3.9.2
+carla==0.9.15
