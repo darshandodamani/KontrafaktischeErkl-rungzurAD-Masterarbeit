@@ -1,3 +1,4 @@
+# location: Projects/masking/lime/single_image_and_lime_based_masking.py
 from calendar import c
 import dis
 import torch
@@ -281,7 +282,8 @@ def save_images(
     # Create a figure and save the original image separately
     plt.figure(figsize=(5, 5))
     plt.imshow(original_image_np)
-    plt.title(f"Original Image\nLabel: {'STOP' if actual_label == 0 else 'GO'}")
+    plt.title(f"Original Image")
+    # plt.title(f"Original Image\nLabel: {'STOP' if actual_label == 0 else 'GO'}")
     plt.savefig(f"{results_dir}/original_{image_name}.png")
     plt.close()  # Close the figure to free memory
 

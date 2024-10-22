@@ -20,9 +20,13 @@ runs/
 #temp ignore town10_dataset folder
 dataset/town10_dataset/
 dataset/Town06_dataset/
+dataset/Town02_dataset/
 
 # Ignore the .vscode folder
 .vscode/
 
 # Ignore the settings file
 settings.json
+
+# Igonew latent_space folder
+latent_vectors/
