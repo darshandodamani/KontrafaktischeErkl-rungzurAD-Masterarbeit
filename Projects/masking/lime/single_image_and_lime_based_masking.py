@@ -12,6 +12,7 @@ import sys
 import os
 from lime.lime_tabular import LimeTabularExplainer
 import pandas as pd
+from median_calculator import compute_dataset_medians
 
 
 # Add Python path to include the directory where 'encoder.py' is located
@@ -225,7 +226,9 @@ def mask_latent_features(latent_vector, important_features, method="zero"):
         masked_latent[:, important_features] = 0
 
     elif method == "median":
-        # Set important features to the median value
+        # Set important features to the median value of the latent vector calculated form the medain_calculator.py
+        
+        
         median_val = torch.median(latent_vector).item()
         print(f"Meadian value: {median_val}")
         print(f"Masking features by setting them to median value {median_val}...")

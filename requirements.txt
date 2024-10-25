@@ -1,3 +1,15 @@
-pandas==2.2.2
-matplotlib==3.9.2
+# requirements.txt
+#For CARLA-related tasks (Python 3.7)
 carla==0.9.15
+pygame==2.1.0
+numpy==1.21.0
+
+# For VAE, masking, counterfactual explanations (Python 3.11)
+torch==2.4.1
+torchvision==0.19.0
+numpy==2.0.2
+matplotlib==3.9.2
+scikit-learn==1.5.1
+lime==0.2.0.1
+opencv-python==4.10.0.84
+pandas==2.2.2
