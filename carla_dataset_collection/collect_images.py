@@ -42,7 +42,8 @@ def setup_camera(world, vehicle, image_size_x=160, image_size_y=80, fov=125):
     camera_bp.set_attribute("image_size_x", str(image_size_x))
     camera_bp.set_attribute("image_size_y", str(image_size_y))
     camera_bp.set_attribute("fov", str(fov))
-    camera_transform = carla.Transform(carla.Location(x=2.0, y=1.0, z=1.5))
+    # camera_transform = carla.Transform(carla.Location(x=2.0, y=1.0, z=1.5))
+    camera_transform = carla.Transform(carla.Location(x=2.0, y=0.0, z=1.5), carla.Rotation(pitch=-10))
     camera = world.spawn_actor(camera_bp, camera_transform, attach_to=vehicle)
     logging.info("Camera sensor attached to the vehicle.")
     return camera
@@ -75,7 +76,7 @@ def collect_images(output_dir, town_name, image_size):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-            while True:
+            while frame < 20000:
                 world.tick()
                 time.sleep(0.2)
 

@@ -21,6 +21,7 @@ runs/
 dataset/town10_dataset/
 dataset/Town06_dataset/
 dataset/Town02_dataset/
+dataset/Town07_dataset/
 
 # Ignore the .vscode folder
 .vscode/
