@@ -45,7 +45,7 @@ classifier = ClassifierModel(
 ).to(device)
 
 # Loss and optimizer
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss() # more info: https://www.datacamp.com/tutorial/the-cross-entropy-loss-function-in-machine-learning
 optimizer = optim.Adam(classifier.parameters(), lr=learning_rate)
 
 # Load the training dataset

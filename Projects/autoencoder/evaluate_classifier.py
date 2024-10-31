@@ -1,3 +1,4 @@
+# location: Projects/autoencoder/evaluate_classifier.py
 import torch
 import numpy as np
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score
@@ -24,7 +25,7 @@ vae_model = VariationalAutoencoder(latent_dims=128, num_epochs=50).to(
 )  # Example value for num_epochs
 vae_model.load_state_dict(
     torch.load(
-        "model/epochs_500_latent_128/var_autoencoder.pth",
+        "model/epochs_500_latent_128_town_7/var_autoencoder.pth",
         map_location=device,
         weights_only=True,
     )
@@ -38,7 +39,7 @@ classifier = ClassifierModel(input_size=128, hidden_size=128, output_size=2).to(
 # Load the classifier state dictionary
 classifier.load_state_dict(
     torch.load(
-        "model/epochs_500_latent_128/classifier_final.pth",
+        "model/epochs_500_latent_128_town_7/classifier_final.pth",
         map_location=device,
         weights_only=True,
     )
