@@ -156,7 +156,8 @@ def save_images_combined(
 
     # Plot original image
     axs[0].imshow(original_image_np)
-    axs[0].set_title(f"Original\nLabel: {'STOP' if actual_label == 0 else 'GO'}")
+    # axs[0].set_title(f"Original\nLabel: {'STOP' if actual_label == 0 else 'GO'}")
+    axs[0].set_title(f"Original")
 
     # Plot reconstructed image before masking
     axs[1].imshow(reconstructed_before_np)
@@ -170,12 +171,14 @@ def save_images_combined(
     if counterfactual_image is not None:
         counterfactual_image_np = counterfactual_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
         axs[3].imshow(counterfactual_image_np)
-        axs[3].set_title(f"Counterfactual\nLoss: {counterfactual_loss:.4f}\nPred: {counterfactual_label}")
+        # axs[3].set_title(f"Counterfactual\nLoss: {counterfactual_loss:.4f}\nPred: {counterfactual_label}")
+        axs[3].set_title(f"Counterfactual\nPred: {counterfactual_label}")
 
         # Save the counterfactual image separately
         plt.figure(figsize=(5, 5))
         plt.imshow(counterfactual_image_np)
-        plt.title(f"Counterfactual\nLoss: {counterfactual_loss:.4f}\nPred: {counterfactual_label}")
+        # plt.title(f"Counterfactual\nLoss: {counterfactual_loss:.4f}\nPred: {counterfactual_label}")
+        plt.title(f"Counterfactual\nPred: {counterfactual_label}")
         plt.savefig(f"{counterfactual_dir}/counterfactual_{image_name}.png")
         plt.close()
 
