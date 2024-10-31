@@ -36,21 +36,21 @@ decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
 classifier = Classifier().to(device)
 
 try:
-    encoder.load_state_dict(torch.load(encoder_path, map_location=device))
+    encoder.load_state_dict(torch.load(encoder_path, map_location=device, weights_only=True))
     logging.info(f"Encoder model loaded successfully from {encoder_path}")
 except Exception as e:
     logging.error(f"Error loading encoder model from {encoder_path}: {e}")
     raise
 
 try:
-    decoder.load_state_dict(torch.load(decoder_path, map_location=device))
+    decoder.load_state_dict(torch.load(decoder_path, map_location=device, weights_only=True))
     logging.info(f"Decoder model loaded successfully from {decoder_path}")
 except Exception as e:
     logging.error(f"Error loading decoder model from {decoder_path}: {e}")
     raise
 
 try:
-    classifier.load_state_dict(torch.load(classifier_path, map_location=device))
+    classifier.load_state_dict(torch.load(classifier_path, map_location=device, weights_only=True))
     logging.info(f"Classifier model loaded successfully from {classifier_path}")
 except Exception as e:
     logging.error(f"Error loading classifier model from {classifier_path}: {e}")
