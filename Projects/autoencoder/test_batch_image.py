@@ -12,9 +12,9 @@ import signal
 import sys
 
 # Paths to models
-encoder_path = "model/epochs_500_latent_128/var_encoder_model.pth"
-decoder_path = "model/epochs_500_latent_128/decoder_model.pth"
-classifier_path = "model/epochs_500_latent_128/classifier_final.pth"
+encoder_path = "model/epochs_500_latent_128_town_7/var_encoder_model.pth"
+decoder_path = "model/epochs_500_latent_128_town_7/decoder_model.pth"
+classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
 
 # Load the models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

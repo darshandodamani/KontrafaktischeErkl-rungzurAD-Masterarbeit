@@ -1,19 +1,16 @@
 # location: Projects/masking/lime/single_image_and_lime_based_masking.py
 from calendar import c
-import dis
 import torch
 from PIL import Image
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import numpy as np
-import signal
 import sys
 import os
 from lime.lime_tabular import LimeTabularExplainer
 import pandas as pd
 from median_calculator import compute_dataset_medians
-
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
