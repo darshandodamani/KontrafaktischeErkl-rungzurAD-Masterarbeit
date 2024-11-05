@@ -25,6 +25,8 @@ def split_dataset(data_path, train_ratio=0.8):
     # Ensure balanced STOP and GO labels in both train and test sets
     stop_df = data_df[data_df['label'] == 'STOP']
     go_df = data_df[data_df['label'] == 'GO']
+
+    # Balance the STOP and GO samples by sampling
     if len(stop_df) < len(go_df):
         stop_df = stop_df.sample(len(go_df), replace=True, random_state=42)
     elif len(go_df) < len(stop_df):
@@ -37,11 +39,19 @@ def split_dataset(data_path, train_ratio=0.8):
     # Splitting the balanced dataset
     train_df = balanced_df.sample(frac=train_ratio, random_state=42)
     test_df = balanced_df.drop(train_df.index)
+
+    # Save train and test data logs
     train_df.to_csv(train_csv, index=False)
     test_df.to_csv(test_csv, index=False)
 
-    # Log the number of images in train and test sets
-    logging.info(f"Dataset split completed. Train set: {len(train_df)}, Test set: {len(test_df)}")
+    # Log the number of images in train and test sets, including STOP and GO counts
+    train_stop_count = train_df[train_df['label'] == 'STOP'].shape[0]
+    train_go_count = train_df[train_df['label'] == 'GO'].shape[0]
+    test_stop_count = test_df[test_df['label'] == 'STOP'].shape[0]
+    test_go_count = test_df[test_df['label'] == 'GO'].shape[0]
+
+    logging.info(f"Dataset split completed. Train set: {len(train_df)}, STOP: {train_stop_count}, GO: {train_go_count}")
+    logging.info(f"Test set: {len(test_df)}, STOP: {test_stop_count}, GO: {test_go_count}")
 
     # Copy files to respective folders
     def copy_files(file_list, source_folder, dest_folder):
@@ -67,6 +77,21 @@ def split_dataset(data_path, train_ratio=0.8):
     plot_path = os.path.join('..', 'plots', 'dataset_images', 'dataset_split.png')
     plt.savefig(plot_path)
     logging.info(f"Dataset split plot saved to {plot_path}")
+
+    # Plot class distribution for train and test sets
+    plt.figure(figsize=(10, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.pie([train_stop_count, train_go_count], labels=['STOP', 'GO'], colors=['red', 'green'], autopct='%1.1f%%')
+    plt.title('Train Set Label Distribution')
+
+    plt.subplot(1, 2, 2)
+    plt.pie([test_stop_count, test_go_count], labels=['STOP', 'GO'], colors=['red', 'green'], autopct='%1.1f%%')
+    plt.title('Test Set Label Distribution')
+
+    plot_path = os.path.join('..', 'plots', 'dataset_images', 'train_test_label_distribution.png')
+    plt.savefig(plot_path)
+    logging.info(f"Train/Test label distribution plot saved to {plot_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dataset Splitting Script")
