@@ -57,7 +57,7 @@ Once the dataset is collected, the next steps are **labeling** and **splitting**
 
 ### Labeling the Dataset
 The dataset is labeled based on the throttle and brake values collected from the vehicle in CARLA. Images are labeled as `STOP` or `GO` based on thresholds for brake and throttle:
-- **STOP**: If `brake > 0.1` or `throttle < 0.2`.
+- **STOP**: If `brake > 0.15` or `throttle < 0.25`.
 - **GO**: Otherwise.
 
 To label the dataset, use the following command:

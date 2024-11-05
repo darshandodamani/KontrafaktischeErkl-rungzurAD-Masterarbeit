@@ -13,9 +13,13 @@ logging.basicConfig(level=logging.INFO)
 
 # Utility Functions
 def connect_to_carla():
-    client = carla.Client("localhost", 2000)
-    client.set_timeout(10.0)
-    return client
+    try:
+        client = carla.Client("localhost", 2000)
+        client.set_timeout(10.0)
+        return client
+    except Exception as e:
+        logging.error(f"Failed to connect to CARLA: {e}")
+        raise
 
 def setup_world(client, town_name):
     logging.info(f"Loading {town_name}...")
@@ -42,8 +46,7 @@ def setup_camera(world, vehicle, image_size_x=160, image_size_y=80, fov=125):
     camera_bp.set_attribute("image_size_x", str(image_size_x))
     camera_bp.set_attribute("image_size_y", str(image_size_y))
     camera_bp.set_attribute("fov", str(fov))
-    # camera_transform = carla.Transform(carla.Location(x=2.0, y=1.0, z=1.5))
-    camera_transform = carla.Transform(carla.Location(x=2.0, y=0.0, z=1.5), carla.Rotation(pitch=-10))
+    camera_transform = carla.Transform(carla.Location(x=1.5, y=0.0, z=1.5))
     camera = world.spawn_actor(camera_bp, camera_transform, attach_to=vehicle)
     logging.info("Camera sensor attached to the vehicle.")
     return camera
@@ -56,6 +59,9 @@ def collect_images(output_dir, town_name, image_size):
     camera = setup_camera(world, vehicle, image_size[0], image_size[1])
     
     image_array = None
+    total_frames_collected = 0
+    total_frames_saved = 0
+    total_frames_skipped = 0
 
     def process_image(image):
         nonlocal image_array
@@ -76,15 +82,20 @@ def collect_images(output_dir, town_name, image_size):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-            while frame < 20000:
+            while frame < 15000:
                 world.tick()
                 time.sleep(0.2)
+                total_frames_collected += 1
 
                 if image_array is not None:
                     image_name = f"{town_name}_{frame:06d}.png"
                     image_path = os.path.join(output_dir, image_name)
-                    cv2.imwrite(image_path, image_array)
-                    logging.info(f"Saved {image_name}")
+                    if cv2.imwrite(image_path, image_array):
+                        logging.info(f"Saved {image_name}")
+                        total_frames_saved += 1
+                    else:
+                        logging.error(f"Failed to save image {image_name}")
+                        raise RuntimeError(f"Failed to save image {image_name}")
 
                     control = vehicle.get_control()
                     writer.writerow({
@@ -93,7 +104,16 @@ def collect_images(output_dir, town_name, image_size):
                         "throttle": control.throttle,
                         "brake": control.brake,
                     })
+                    logging.info(f"Saved control data for {image_name}")
+                    
+                    # Verify CSV update
+                    csvfile.flush()
+                    os.fsync(csvfile.fileno())
+                    logging.info(f"CSV file updated successfully for {image_name}")
                     frame += 1
+                else:
+                    logging.warning("Image not available yet, skipping frame.")
+                    total_frames_skipped += 1
 
     finally:
         if camera:
@@ -102,6 +122,12 @@ def collect_images(output_dir, town_name, image_size):
         if vehicle:
             vehicle.destroy()
         logging.info("All actors destroyed.")
+
+        # Log summary for transparency
+        logging.info(f"Total frames collected: {total_frames_collected}")
+        logging.info(f"Total frames saved: {total_frames_saved}")
+        logging.info(f"Total frames skipped: {total_frames_skipped}")
+        logging.info(f"Total labeled frames: {frame}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CARLA Dataset Collection Script")
