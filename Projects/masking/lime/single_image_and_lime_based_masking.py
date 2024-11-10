@@ -1,5 +1,6 @@
 # location: Projects/masking/lime/single_image_and_lime_based_masking.py
 from calendar import c
+from idna import encode
 import torch
 from PIL import Image
 import torchvision.transforms as transforms
@@ -11,6 +12,7 @@ import os
 from lime.lime_tabular import LimeTabularExplainer
 import pandas as pd
 from median_calculator import compute_dataset_medians
+import seaborn as sns
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
@@ -26,6 +28,11 @@ from vae import VariationalAutoencoder, CustomImageDatasetWithLabels
 encoder_path = "model/epochs_500_latent_128_town_7/var_encoder_model.pth"
 decoder_path = "model/epochs_500_latent_128_town_7/decoder_model.pth"
 classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
+
+# Load median values computed earlier
+median_values_csv = "latent_vectors/combined_median_values.csv"
+median_df = pd.read_csv(median_values_csv)
+median_values = median_df.values.flatten()  # Flatten to get a list of median values for each feature
 
 # Load the models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -91,7 +98,6 @@ plt.title(
     f"Image: {os.path.basename(image_path)}\nLabel: {'STOP' if actual_label == 0 else 'GO'}\nSize: {image.size}"
 )
 plt.savefig("original_image.png")
-# plt.show()
 
 
 # 2. Function to preprocess the image
@@ -100,7 +106,7 @@ def preprocess_image(image_path):
     print(f"Input Image Original shape: {np.array(image).shape}")
     transform = transforms.Compose(
         [
-            transforms.Resize((80, 160)),  # Assuming CARLA image size
+            transforms.Resize((80, 160)),
             transforms.ToTensor(),
         ]
     )
@@ -123,7 +129,6 @@ plt.title(
     f"Preprocessed Image: {os.path.basename(image_path)}\nLabel: {'STOP' if actual_label == 0 else 'GO'}\nSize: {image.shape[2:]}"
 )
 plt.savefig("preprocessed_image.png")
-# plt.show()
 
 
 # Send the image to the encoder and get the latent vector
@@ -160,7 +165,7 @@ with torch.no_grad():
 
     # Now compute the MSE loss between the resized reconstructed image and the original input image
     reconstruction_loss = F.mse_loss(reconstructed_image_resized, image).item()
-    print(f"Reconstruction Loss Before: {reconstruction_loss}")
+    print(f"Reconstruction Loss Before Masking: {reconstruction_loss}")
 
     # Visualize the original and reconstructed images
     original_image = image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
@@ -178,12 +183,11 @@ with torch.no_grad():
     )
 
     plt.savefig("reconstructed_image_without_masking.png")
-    # plt.show()
 
 
 # 3. Masking
-# Apply LIME on the latent space
-def apply_lime_on_latent_space(latent_vector, classifier):
+# Apply LIME on the latent space with dynamic percentage-based feature identification and plot feature importance
+def apply_lime_on_latent_space(latent_vector, classifier,top_percentage=0.2):
     latent_vector_np = latent_vector.cpu().numpy().flatten()
     print("--------------------")
     print(f"Latent vector shape: {latent_vector_np.shape}")
@@ -204,10 +208,52 @@ def apply_lime_on_latent_space(latent_vector, classifier):
         .cpu()
         .detach()
         .numpy(),
-        num_features=5,  # Adjust number of features as needed
+        # num_features=5,  # Adjust number of features as needed
+        num_features = len(latent_vector_np), # here the LIME identifies all the features
     )
+    
+    # Sort features by their importance
+    importance_list = sorted(explanation.as_list(), key=lambda x: abs(x[1]), reverse=True)
+    
+    # Calculate how many features to select based on the top percentage
+    num_features_to_select = int(len(importance_list) * top_percentage)
+    
+    # Extract the most important features based on the percentage
+    important_features = [
+        int(feature.split("_")[-1])
+        for feature, _ in importance_list[:num_features_to_select]
+    ]
 
-    return explanation
+    print(f"Top {top_percentage * 100}% important features by LIME: {important_features}")
+    # total number of features counts 
+    print(f"total count of features: {len(important_features)}")
+
+    # Plot the explanation to visualize feature importance
+    fig, ax = plt.subplots(figsize=(15, 10))
+
+    # Extract feature names and their corresponding importance values
+    feature_names, importance_values = zip(*importance_list[:num_features_to_select])
+
+    # Assign colors based on the sign of importance: red for negative, green for positive
+    colors = ['green' if value > 0 else 'red' for value in importance_values]
+
+    # Set y-axis ticks and labels before plotting
+    y_pos = range(len(feature_names))
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(feature_names, fontsize=14, fontweight='bold')
+
+    # Plot a bar chart with thicker bars and color coding
+    ax.barh(y_pos, importance_values, color=colors, height=0.8)
+
+    # Set labels and title
+    ax.set_ylabel("Latent Features", fontsize=16, fontweight='bold')
+    ax.set_xlabel("Feature Importance", fontsize=16, fontweight='bold')
+    plt.title(f"LIME Explanation: Top {top_percentage * 100}% Feature Importance", fontsize=18, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig(f"lime_explanation_top_{int(top_percentage * 100)}_percent.png")
+
+    return important_features
 
 
 # 4. Mask latent features with different methods
@@ -216,6 +262,9 @@ def mask_latent_features(latent_vector, important_features, method="zero"):
     print("--------------------")
     # Ensure that important_features contains the correct indices
     print(f"Features being masked: {important_features}")
+    # total number of features being masked count 
+    print(f"Number of features being masked: {len(important_features)}")
+
 
     if method == "zero":
         # Set important features to 0
@@ -224,12 +273,15 @@ def mask_latent_features(latent_vector, important_features, method="zero"):
 
     elif method == "median":
         # Set important features to the median value of the latent vector calculated form the medain_calculator.py
+        for feature_idx in important_features:
+            median_val = median_values[feature_idx] # Get the median value for the feature
+            print(f"Masking feature {feature_idx} by setting it to median value {median_val}...")
+            masked_latent[:, feature_idx] = median_val
         
-        
-        median_val = torch.median(latent_vector).item()
-        print(f"Meadian value: {median_val}")
-        print(f"Masking features by setting them to median value {median_val}...")
-        masked_latent[:, important_features] = median_val
+        # median_val = torch.median(latent_vector).item()
+        # print(f"Meadian value: {median_val}")
+        # print(f"Masking features by setting them to median value {median_val}...")
+        # masked_latent[:, important_features] = median_val
 
     elif method == "random":
         # Set important features to random values (within the range of the latent vector)
@@ -283,9 +335,8 @@ def save_images(
     plt.figure(figsize=(5, 5))
     plt.imshow(original_image_np)
     plt.title(f"Original Image")
-    # plt.title(f"Original Image\nLabel: {'STOP' if actual_label == 0 else 'GO'}")
     plt.savefig(f"{results_dir}/original_{image_name}.png")
-    plt.close()  # Close the figure to free memory
+    plt.close()
 
     # Create a figure and save the reconstructed image before masking separately
     plt.figure(figsize=(5, 5))
@@ -305,7 +356,7 @@ def save_images(
     plt.savefig(f"{results_dir}/after_masking_{method}_{image_name}.png")
     plt.close()
 
-    # Optionally, you can save all three images in one figure as well
+    # save all three images in one figure as well
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
 
     # Plot original image
@@ -405,10 +456,9 @@ def process_results(
 
 # Main function to test a single image with LIME and masking
 def test_single_image(image_path, csv_file):
+    # Load the actual label from the CSV
     actual_label = get_actual_label(csv_file, image_path)
-    print(
-        f"Image {image_path} is selected and its label is: {'STOP' if actual_label == 0 else 'GO'}"
-    )
+    print(f"Image {image_path} is selected and its label is: {'STOP' if actual_label == 0 else 'GO'}")
     image = preprocess_image(image_path)
 
     with torch.no_grad():
@@ -449,19 +499,12 @@ def test_single_image(image_path, csv_file):
             os.path.basename(image_path),
         )
 
-        # Step 4: Apply LIME to identify important features
-        explanation = apply_lime_on_latent_space(latent_vector, classifier)
-        important_features = [
-            int(feature.split("_")[-1]) for feature, _ in explanation.as_list()
-        ]
-        print(f"Important features identified by LIME: {important_features}")
+        # Step 4: Apply LIME to identify important features dynamically based on percentage and plot the explanation
+        important_features = apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.2)
 
         # Step 5: Mask the latent vector
-        # for method in ["zero", "median", "random"]:
         for method in ["median"]:
-            masked_latent_vector = mask_latent_features(
-                latent_vector, important_features, method
-            )
+            masked_latent_vector = mask_latent_features(latent_vector, important_features, method)
             masked_prediction = classifier(masked_latent_vector)
             masked_class = torch.argmax(masked_prediction, dim=1).item()
             masked_label_str = "STOP" if masked_class == 0 else "GO"
@@ -475,12 +518,8 @@ def test_single_image(image_path, csv_file):
                 mode="bilinear",
                 align_corners=False,
             )
-            masked_reconstruction_loss = F.mse_loss(
-                masked_reconstructed_image_resized, image
-            ).item()
-            print(
-                f"Reconstruction Loss after Masking with ({method}) method: {masked_reconstruction_loss}"
-            )
+            masked_reconstruction_loss = F.mse_loss(masked_reconstructed_image_resized, image).item()
+            print(f"Reconstruction Loss after Masking with ({method}) method: {masked_reconstruction_loss}")
 
             save_images(
                 image,
@@ -495,35 +534,21 @@ def test_single_image(image_path, csv_file):
                 os.path.basename(image_path),
             )
 
-            # Step 7: Check if prediction changed after masking
-            if masked_class != original_class:
-                print(
-                    f"Prediction changed after masking with {method}. Generating counterfactual explanation."
-                )
-
-                # Step 8: Re-encode the masked reconstructed image to get new latent vector
-                re_encoded_latent_vector = encoder(masked_reconstructed_image_resized)[
-                    2
-                ]
-                print(f"Re-encoded Latent Vector: {re_encoded_latent_vector}")
-
-                # Step 9: Classify the re-encoded latent vector
-                re_encoded_prediction = classifier(re_encoded_latent_vector)
-                re_encoded_class = torch.argmax(re_encoded_prediction, dim=1).item()
-                re_encoded_label = "STOP" if re_encoded_class == 0 else "GO"
-                print(f"Re-encoded Prediction: {re_encoded_label}")
-
-                # Compare the re-encoded prediction with the original prediction
-                if re_encoded_class != original_class:
-                    print(
-                        f"Counterfactual explanation found! Re-encoded prediction differs from original."
-                    )
-                else:
-                    print(f"Re-encoded prediction remains the same as the original.")
+            # Send the masked reconstructed image to the encoder to get the latent vector
+            encoded_masked_reconstructed_image = encoder(masked_reconstructed_image_resized)[2]
+            print(f"Encoded Masked Reconstructed Image: {encoded_masked_reconstructed_image}")
+            
+            # Get classifier prediction on re-encoded latent vector
+            classifier_prediction = classifier(encoded_masked_reconstructed_image)
+            classifier_class = torch.argmax(classifier_prediction, dim=1).item()
+            classifier_label = "STOP" if classifier_class == 0 else "GO"
+            print(f"Classifier Prediction after re-encoding: {classifier_label}")
+            
+            if classifier_class != masked_class:
+                print(f"Counterfactual explanation found! Classifier prediction differs from masked prediction.")
             else:
-                print(
-                    f"No prediction change after masking with {method}. No counterfactual explanation generated."
-                )
+                print(f"Classifier prediction remains the same as the masked prediction.")
+       
 
             # Adding result to the table
             process_results(
@@ -537,6 +562,85 @@ def test_single_image(image_path, csv_file):
                 masked_prediction=masked_class,
                 masked_latent_vector=masked_latent_vector,
             )
+
+def plot_reconstruction_loss(images, losses_before, losses_after):
+    plt.figure(figsize=(10, 6))
+    x_values = range(len(images))
+
+    plt.plot(x_values, losses_before, label='Reconstruction Loss Before Masking', color='blue', marker='o')
+    plt.plot(x_values, losses_after, label='Reconstruction Loss After Masking', color='orange', marker='o')
+
+    plt.xlabel('Image Index', fontsize=14)
+    plt.ylabel('Reconstruction Loss', fontsize=14)
+    plt.title('Reconstruction Loss Before and After Masking', fontsize=16)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("reconstruction_loss_comparison.png")
+    print("Reconstruction loss plot saved successfully.")
+    
+def plot_feature_importance_heatmap(feature_importance_data):
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(feature_importance_data, cmap='coolwarm', annot=True, fmt='.2f', cbar=True)
+    plt.title('Feature Importance Heatmap', fontsize=16)
+    plt.xlabel('Latent Features', fontsize=14)
+    plt.ylabel('Images', fontsize=14)
+    plt.tight_layout()
+    plt.savefig("feature_importance_heatmap.png")
+    
+if len(results) == 0:
+    print("The results list is empty. Please check if images are being processed correctly and if results are being appended.")
+else:
+    feature_importance_data = pd.DataFrame([list(result.values()) for result in results], columns=results[0].keys())
+    plot_reconstruction_loss(feature_importance_data['Image Name'], feature_importance_data['Reconstruction Loss Before Masking'], feature_importance_data['Reconstruction Loss After Masking'])
+    plot_feature_importance_heatmap(feature_importance_data['Important Features Masked'])
+    print("Results saved to CSV and plots generated successfully.")
+
+
+# Calculate classification accuracy before and after masking
+def plot_classification_accuracy(before_accuracy, after_accuracy):
+    labels = ['Before Masking', 'After Masking']
+    accuracies = [before_accuracy, after_accuracy]
+
+    plt.figure(figsize=(8, 6))
+    plt.bar(labels, accuracies, color=['green', 'red'])
+    plt.xlabel('Condition', fontsize=14)
+    plt.ylabel('Accuracy', fontsize=14)
+    plt.title('Classification Accuracy Before and After Masking', fontsize=16)
+    plt.ylim(0, 1)
+    plt.tight_layout()
+    plt.savefig("classification_accuracy.png")
+    print("Classification accuracy plot saved successfully.")
+    
+
+def plot_counterfactual_metrics(metric_names, metric_values):
+    """
+    metric_names: List of metric names, e.g. ['Proximity', 'Sparsity', 'Validity']
+    metric_values: 2D list where each inner list contains metric values for an image
+    """
+    num_images = len(metric_values)
+    num_metrics = len(metric_names)
+
+    x = np.arange(num_metrics)
+    width = 0.15
+
+    plt.figure(figsize=(14, 8))
+    for i in range(num_images):
+        plt.bar(x + i * width, metric_values[i], width, label=f'Image {i+1}')
+
+    plt.xlabel('Metrics', fontsize=14)
+    plt.ylabel('Values', fontsize=14)
+    plt.title('Counterfactual Evaluation Metrics for Different Images', fontsize=16)
+    plt.xticks(x + (num_images / 2 - 0.5) * width, metric_names, fontsize=12)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("counterfactual_metrics.png")
+
+# Example Usage
+metric_names = ['Proximity', 'Sparsity', 'Validity']
+metric_values = [[0.5, 0.8, 1.0], [0.6, 0.75, 0.95], [0.55, 0.82, 0.98]]  # Example values for three images
+plot_counterfactual_metrics(metric_names, metric_values)
+print("Counterfactual metrics plot saved successfully.")
 
 
 # After testing, print and save the results to a CSV
@@ -558,3 +662,145 @@ test_single_image(
 
 # to print and save results
 print_and_save_results()
+
+# Function to apply different masking strategies based on user input until a counterfactual explanation is found.
+# def apply_masking_until_ce_found(latent_vector, classifier, decoder, actual_class):
+#     ce_found = False
+#     iteration_count = 0
+
+#     while not ce_found:
+#         # Prompt user for masking strategy
+#         masking_strategy = input("Choose a masking strategy ('zero', 'median', 'random'): ").strip().lower()
+
+#         # Validate input
+#         if masking_strategy not in ['zero', 'median', 'random']:
+#             print("Invalid strategy. Please choose 'zero', 'median', or 'random'.")
+#             continue
+
+#         # Apply LIME to identify important features
+#         explanation = apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.2)
+        
+#         # Determine the correct way to extract important features
+#         if isinstance(explanation, list) and all(isinstance(e, tuple) for e in explanation):
+#             # If explanation is a list of tuples (expected case)
+#             important_features = [int(feature.split("_")[-1]) for feature, _ in explanation]
+#         elif isinstance(explanation, list) and all(isinstance(e, int) for e in explanation):
+#             # If explanation is already a list of important feature indices
+#             important_features = explanation
+#         else:
+#             # Handle unexpected case (fallback)
+#             raise ValueError("Unexpected format for LIME explanation output.")
+
+#         # Mask the latent vector using the selected strategy
+#         masked_latent_vector = mask_latent_features(latent_vector, important_features, method=masking_strategy)
+        
+#         # Classify the masked latent vector
+#         masked_prediction = classifier(masked_latent_vector)
+#         masked_class = torch.argmax(masked_prediction, dim=1).item()
+
+#         # Check if the prediction has changed
+#         if masked_class != actual_class:
+#             ce_found = True
+#             print(f"Counterfactual explanation found after {iteration_count + 1} iterations with '{masking_strategy}' masking.")
+#             # Decode the latent vector to get the reconstructed image
+#             masked_reconstructed_image = decoder(masked_latent_vector)
+#             # Plot original and masked images
+#             plot_reconstructed_images(latent_vector, masked_latent_vector, masked_reconstructed_image, decoder)
+#             break
+
+#         iteration_count += 1
+#         print(f"Counterfactual explanation not found using '{masking_strategy}' masking. Trying again...")
+
+#         # Safety check to avoid infinite loop
+#         if iteration_count >= 10:
+#             print("After 10 iterations, a counterfactual explanation could not be found.")
+#             print("Possible reasons could be:")
+#             print("- The identified features are not impactful enough to change the model's decision.")
+#             # print("- The masking strategy might not be appropriate for altering key features that affect classification.")
+#             # print("- The latent representation might be too stable or robust against the modifications.")
+#             break
+def apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, masked_class):
+    ce_found = False
+    iteration_count = 0
+
+    while not ce_found:
+        # Prompt user for masking strategy
+        masking_strategy = input("Choose a masking strategy ('zero', 'median', 'random'): ").strip().lower()
+
+        # Validate input
+        if masking_strategy not in ['zero', 'median', 'random']:
+            print("Invalid strategy. Please choose 'zero', 'median', or 'random'.")
+            continue
+
+        # Apply LIME to identify important features
+        important_features = apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.2)
+
+        # Mask the latent vector using the selected strategy
+        masked_latent_vector = mask_latent_features(latent_vector, important_features, method=masking_strategy)
+        
+        # Decode the masked latent vector
+        masked_reconstructed_image = decoder(masked_latent_vector)
+        
+        # Resize the masked image to the input dimensions expected by the encoder
+        masked_image_resized = F.interpolate(
+            masked_reconstructed_image,
+            size=(80, 160),  # Adjust size based on the input image size
+            mode="bilinear",
+            align_corners=False
+        )
+        
+        # Re-encode the masked reconstructed image
+        re_encoded_latent_vector = encoder(masked_image_resized)[2]
+
+        # Get prediction from the classifier
+        re_encoded_prediction = classifier(re_encoded_latent_vector)
+        re_encoded_class = torch.argmax(re_encoded_prediction, dim=1).item()
+
+        # Check if the prediction has changed
+        if re_encoded_class != masked_class:
+            ce_found = True
+            print(f"Counterfactual explanation found after {iteration_count + 1} iterations with '{masking_strategy}' masking.")
+            plot_reconstructed_images(latent_vector, masked_latent_vector, masked_reconstructed_image, decoder)
+            break
+
+        iteration_count += 1
+        print(f"Counterfactual explanation not found using '{masking_strategy}' masking. Trying again...")
+
+        # Safety check to avoid infinite loop
+        if iteration_count >= 10:
+            print("After 10 iterations, a counterfactual explanation could not be found.")
+            print("Possible reasons could be:")
+            print("- The identified features are not impactful enough to change the model's decision.")
+            break
+
+        
+# Function to plot original and masked images to visually evaluate the changes
+def plot_reconstructed_images(original_latent_vector, masked_latent_vector, masked_reconstructed_image, decoder):
+    original_reconstructed_image = decoder(original_latent_vector)
+    original_image_np = original_reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
+    masked_image_np = masked_reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
+
+    plt.figure(figsize=(12, 6))
+
+    # Plot Original Image
+    plt.subplot(1, 2, 1)
+    plt.imshow(original_image_np)
+    plt.title("Original Reconstructed Image")
+
+    # Plot Masked Image
+    plt.subplot(1, 2, 2)
+    plt.imshow(masked_image_np)
+    plt.title("Masked Reconstructed Image")
+
+    plt.tight_layout()
+    plt.show()
+
+# Example function call
+# Assuming latent_vector, classifier, and decoder are already defined and set to eval() mode
+
+# Get the initial masked class from the classifier's prediction on the original latent vector
+with torch.no_grad():
+    original_prediction = classifier(latent_vector)
+    masked_class = torch.argmax(original_prediction, dim=1).item()
+
+apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, masked_class)

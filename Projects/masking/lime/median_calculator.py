@@ -75,7 +75,7 @@ def preprocess_image(image_path, device):
     # Define transformations
     transform = transforms.Compose(
         [
-            transforms.Resize((80, 160)),  # Assuming CARLA image size
+            transforms.Resize((80, 160)),
             transforms.ToTensor(),
         ]
     )
@@ -124,7 +124,7 @@ def compute_dataset_medians(dataset_paths, encoder, device):
         for image_filename in os.listdir(dataset_path):
             image_path = os.path.join(dataset_path, image_filename)
 
-            if image_path.endswith(('.png', '.jpg', '.jpeg')):  # Include multiple formats
+            if image_path.endswith(('.png')): 
                 logging.info(f"Processing image: {image_filename}")
                 
                 # Preprocess the image
@@ -175,6 +175,7 @@ def compute_dataset_medians(dataset_paths, encoder, device):
         return None, None
 
     # Stack all latent vectors into a numpy array
+    # info: all latent vectors into a NumPy array (np.vstack()) and compute the median across all the vectors along the feature dimension (axis=0). This approach helps to get a median value for each feature.
     try:
         all_latent_vectors = np.vstack(all_latent_vectors)
         logging.info(f"Stacked latent vectors shape: {all_latent_vectors.shape}")
