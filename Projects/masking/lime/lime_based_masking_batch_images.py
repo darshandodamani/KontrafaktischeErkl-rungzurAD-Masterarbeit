@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from lime.lime_tabular import LimeTabularExplainer
 import sys
 import numpy as np
+from median_calculator import compute_dataset_medians
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
@@ -111,9 +112,14 @@ def mask_latent_features(latent_vector, important_features, method="zero"):
         masked_latent[:, important_features] = 0
 
     elif method == "median":
-        median_val = torch.median(latent_vector).item()
-        print(f"Median value: {median_val}")
-        masked_latent[:, important_features] = median_val
+        calculated_medians = compute_dataset_medians(["dataset/town7_dataset/train/"], encoder, device)
+        print("Masking features by setting them to median values...")
+        for idx in important_features:
+            masked_latent[:, idx] = calculated_medians[idx]
+            print(f"Feature {idx} set to median value: {calculated_medians[idx]}")  
+        # median_val = torch.median(latent_vector).item()
+        # print(f"Median value: {median_val}")
+        # masked_latent[:, important_features] = median_val
 
     elif method == "random":
         random_vals = torch.randn_like(masked_latent[:, important_features])

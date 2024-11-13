@@ -13,6 +13,8 @@ from lime.lime_tabular import LimeTabularExplainer
 import pandas as pd
 from median_calculator import compute_dataset_medians
 import seaborn as sns
+from skimage.metrics import structural_similarity as ssim
+import cv2
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
@@ -37,21 +39,13 @@ median_values = median_df.values.flatten()  # Flatten to get a list of median va
 # Load the models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(
-    device
-)  # Example latent dims
+encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(device)
 decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
 classifier = Classifier().to(device)
 
-encoder.load_state_dict(
-    torch.load(encoder_path, map_location=device, weights_only=True)
-)
-decoder.load_state_dict(
-    torch.load(decoder_path, map_location=device, weights_only=True)
-)
-classifier.load_state_dict(
-    torch.load(classifier_path, map_location=device, weights_only=True)
-)
+encoder.load_state_dict(torch.load(encoder_path, map_location=device, weights_only=True))
+decoder.load_state_dict(torch.load(decoder_path, map_location=device, weights_only=True))
+classifier.load_state_dict(torch.load(classifier_path, map_location=device, weights_only=True))
 
 encoder.eval()
 decoder.eval()
@@ -169,9 +163,7 @@ with torch.no_grad():
 
     # Visualize the original and reconstructed images
     original_image = image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
-    reconstructed_image = (
-        reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0)
-    )
+    reconstructed_image = (reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0))
 
     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
     axs[0].imshow(original_image)
@@ -185,9 +177,8 @@ with torch.no_grad():
     plt.savefig("reconstructed_image_without_masking.png")
 
 
-# 3. Masking
-# Apply LIME on the latent space with dynamic percentage-based feature identification and plot feature importance
-def apply_lime_on_latent_space(latent_vector, classifier,top_percentage=0.2):
+# 3. Apply LIME on the latent space with dynamic percentage-based feature identification and plot feature importance
+def apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.05):
     latent_vector_np = latent_vector.cpu().numpy().flatten()
     print("--------------------")
     print(f"Latent vector shape: {latent_vector_np.shape}")
@@ -209,33 +200,38 @@ def apply_lime_on_latent_space(latent_vector, classifier,top_percentage=0.2):
         .detach()
         .numpy(),
         # num_features=5,  # Adjust number of features as needed
-        num_features = len(latent_vector_np), # here the LIME identifies all the features
+        num_features=len(latent_vector_np),  # LIME identifies all the features
     )
-    
-    # Sort features by their importance
-    importance_list = sorted(explanation.as_list(), key=lambda x: abs(x[1]), reverse=True)
-    
+
+    # Sort features by their importance and filter only positively contributing features
+    importance_list = [
+        (feature, weight) for feature, weight in explanation.as_list() if weight > 0
+    ]  # Keep only positive influence features
+
+    # Sort positively contributing features in descending order by absolute weight
+    importance_list = sorted(importance_list, key=lambda x: abs(x[1]), reverse=True)
+
     # Calculate how many features to select based on the top percentage
     num_features_to_select = int(len(importance_list) * top_percentage)
-    
-    # Extract the most important features based on the percentage
+
+    # Extract the most important positively contributing features based on the percentage
     important_features = [
         int(feature.split("_")[-1])
         for feature, _ in importance_list[:num_features_to_select]
     ]
 
-    print(f"Top {top_percentage * 100}% important features by LIME: {important_features}")
-    # total number of features counts 
-    print(f"total count of features: {len(important_features)}")
+    print(f"Top {top_percentage * 100}% positively contributing features by LIME: {important_features}")
+    # Total number of features counts 
+    print(f"Total count of positively contributing features: {len(important_features)}")
 
     # Plot the explanation to visualize feature importance
-    fig, ax = plt.subplots(figsize=(15, 10))
+    fig, ax = plt.subplots(figsize=(20, 15))
 
     # Extract feature names and their corresponding importance values
     feature_names, importance_values = zip(*importance_list[:num_features_to_select])
 
-    # Assign colors based on the sign of importance: red for negative, green for positive
-    colors = ['green' if value > 0 else 'red' for value in importance_values]
+    # Assign colors based on the sign of importance: green for positive (since we filtered only positives)
+    colors = ['green' for _ in importance_values]
 
     # Set y-axis ticks and labels before plotting
     y_pos = range(len(feature_names))
@@ -248,7 +244,7 @@ def apply_lime_on_latent_space(latent_vector, classifier,top_percentage=0.2):
     # Set labels and title
     ax.set_ylabel("Latent Features", fontsize=16, fontweight='bold')
     ax.set_xlabel("Feature Importance", fontsize=16, fontweight='bold')
-    plt.title(f"LIME Explanation: Top {top_percentage * 100}% Feature Importance", fontsize=18, fontweight='bold')
+    plt.title(f"LIME Explanation: Top {top_percentage * 100}% Positive Feature Importance", fontsize=18, fontweight='bold')
 
     plt.tight_layout()
     plt.savefig(f"lime_explanation_top_{int(top_percentage * 100)}_percent.png")
@@ -385,18 +381,7 @@ results = []
 
 
 # Append the results for each image and masking method
-def append_results(
-    image_name,
-    image_size,
-    recon_loss_before,
-    recon_loss_after,
-    masking_method,
-    num_features,
-    important_features,
-    important_feature_values_before,
-    important_feature_values_after,
-    prediction_change,
-):
+def append_results(image_name,image_size,recon_loss_before,recon_loss_after,masking_method,num_features,important_features,important_feature_values_before,important_feature_values_after,prediction_change,):
     results.append(
         {
             "Image Name": image_name,
@@ -416,17 +401,7 @@ def append_results(
 
 
 # Process and append results for each masking method
-def process_results(
-    image_name,
-    image_size,
-    recon_loss_before,
-    recon_loss_after,
-    method,
-    important_features,
-    original_prediction,
-    masked_prediction,
-    masked_latent_vector,
-):
+def process_results(image_name,image_size,recon_loss_before,recon_loss_after,method,important_features,original_prediction,masked_prediction,masked_latent_vector,):
     # Check if the prediction changed
     prediction_changed = original_prediction != masked_prediction
 
@@ -434,24 +409,52 @@ def process_results(
     num_features = len(important_features)
 
     # Append the result to the table
-    append_results(
-        image_name=image_name,
-        image_size=image_size,
-        recon_loss_before=recon_loss_before,
-        recon_loss_after=recon_loss_after,
-        masking_method=method,
-        num_features=num_features,
-        important_features=important_features,
-        important_feature_values_before=latent_vector[:, important_features]
-        .cpu()
-        .numpy()
-        .tolist(),
-        important_feature_values_after=masked_latent_vector[:, important_features]
-        .cpu()
-        .numpy()
-        .tolist(),
-        prediction_change=prediction_changed,
-    )
+    append_results(image_name=image_name,image_size=image_size, recon_loss_before=recon_loss_before, recon_loss_after=recon_loss_after, masking_method=method, num_features=num_features,
+        important_features=important_features,important_feature_values_before=latent_vector[:, important_features].cpu().numpy().tolist(),
+        important_feature_values_after=masked_latent_vector[:, important_features].cpu().numpy().tolist(),prediction_change=prediction_changed,)
+
+# Function to compute SSIM and PSNR
+def compute_image_metrics(original_image, reconstructed_image):
+    # Convert tensors to numpy arrays
+    original_image_np = original_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0) * 255
+    reconstructed_image_np = reconstructed_image.cpu().detach().squeeze().numpy().transpose(1, 2, 0) * 255
+
+    # Ensure the images are uint8 for SSIM and PSNR computation
+    original_image_np = original_image_np.astype(np.uint8)
+    reconstructed_image_np = reconstructed_image_np.astype(np.uint8)
+
+    # Determine an appropriate window size for SSIM calculation
+    min_dimension = min(original_image_np.shape[:2])
+    win_size = min(7, min_dimension)  # Use 7 or the minimum dimension, whichever is smaller
+
+    # Compute SSIM (Structural Similarity Index)
+    ssim_value = ssim(original_image_np, reconstructed_image_np, win_size=win_size, channel_axis=-1)
+
+    # Compute PSNR (Peak Signal-to-Noise Ratio)
+    psnr_value = cv2.PSNR(original_image_np, reconstructed_image_np)
+
+    return ssim_value, psnr_value
+
+
+# Function to calculate entropy of an image
+def calculate_image_entropy(image):
+    # Convert tensor to numpy array and scale to [0, 255]
+    image_np = image.cpu().detach().squeeze().numpy().transpose(1, 2, 0) * 255
+    image_np = image_np.astype(np.uint8)
+
+    # Convert to grayscale for entropy calculation
+    gray_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+
+    # Calculate histogram
+    hist, _ = np.histogram(gray_image, bins=256, range=(0, 256))
+
+    # Calculate probabilities
+    hist_prob = hist / np.sum(hist)
+
+    # Calculate entropy
+    entropy = -np.sum([p * np.log2(p) for p in hist_prob if p > 0])
+
+    return entropy
 
 
 # Main function to test a single image with LIME and masking
@@ -474,33 +477,29 @@ def test_single_image(image_path, csv_file):
 
         # Step 3: Decode the latent vector to get the reconstructed image
         reconstructed_image = decoder(latent_vector)
-        reconstructed_image_resized = F.interpolate(
-            reconstructed_image,
-            size=image.shape[2:],
-            mode="bilinear",
-            align_corners=False,
-        )
+        reconstructed_image_resized = F.interpolate(reconstructed_image,size=image.shape[2:], mode="bilinear", align_corners=False,)
 
         # Compute reconstruction loss
         reconstruction_loss = F.mse_loss(reconstructed_image_resized, image).item()
         print(f"Reconstruction Loss (Without Masking): {reconstruction_loss}")
+        
+        # Compute SSIM and PSNR between original and reconstructed images
+        ssim_value, psnr_value = compute_image_metrics(image, reconstructed_image_resized)
+        print(f"SSIM (Without Masking): {ssim_value}")
+        print(f"PSNR (Without Masking): {psnr_value} dB")
+
+        # Calculate entropy of original and reconstructed images
+        original_entropy = calculate_image_entropy(image)
+        reconstructed_entropy = calculate_image_entropy(reconstructed_image_resized)
+        print(f"Original Image Entropy: {original_entropy}")
+        print(f"Reconstructed Image Entropy (Without Masking): {reconstructed_entropy}")
+
 
         # Visualize the original and reconstructed images
-        save_images(
-            image,
-            reconstructed_image,
-            reconstructed_image,
-            reconstruction_loss,
-            reconstruction_loss,
-            "original",
-            actual_label,
-            predicted_label,
-            predicted_label,
-            os.path.basename(image_path),
-        )
+        save_images(image,reconstructed_image,reconstructed_image,reconstruction_loss,reconstruction_loss,"original",actual_label,predicted_label,predicted_label,os.path.basename(image_path),)
 
         # Step 4: Apply LIME to identify important features dynamically based on percentage and plot the explanation
-        important_features = apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.2)
+        important_features = apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.05)
 
         # Step 5: Mask the latent vector
         for method in ["median"]:
@@ -512,27 +511,20 @@ def test_single_image(image_path, csv_file):
 
             # Step 6: Decode the masked latent vector to get the masked reconstructed image
             masked_reconstructed_image = decoder(masked_latent_vector)
-            masked_reconstructed_image_resized = F.interpolate(
-                masked_reconstructed_image,
-                size=image.shape[2:],
-                mode="bilinear",
-                align_corners=False,
-            )
+            masked_reconstructed_image_resized = F.interpolate(masked_reconstructed_image, size=image.shape[2:], mode="bilinear", align_corners=False,)
             masked_reconstruction_loss = F.mse_loss(masked_reconstructed_image_resized, image).item()
             print(f"Reconstruction Loss after Masking with ({method}) method: {masked_reconstruction_loss}")
 
-            save_images(
-                image,
-                reconstructed_image,
-                masked_reconstructed_image,
-                reconstruction_loss,
-                masked_reconstruction_loss,
-                method,
-                actual_label,
-                predicted_label,
-                masked_label_str,
-                os.path.basename(image_path),
-            )
+            # Compute SSIM and PSNR for masked reconstruction
+            ssim_value_masked, psnr_value_masked = compute_image_metrics(image, masked_reconstructed_image_resized)
+            print(f"SSIM (After Masking - {method}): {ssim_value_masked}")
+            print(f"PSNR (After Masking - {method}): {psnr_value_masked} dB")
+
+            # Calculate entropy for the masked reconstructed image
+            masked_entropy = calculate_image_entropy(masked_reconstructed_image_resized)
+            print(f"Masked Reconstructed Image Entropy (After Masking - {method}): {masked_entropy}")
+
+            save_images(image,reconstructed_image,masked_reconstructed_image,reconstruction_loss,masked_reconstruction_loss,method,actual_label,predicted_label,masked_label_str,os.path.basename(image_path),)
 
             # Send the masked reconstructed image to the encoder to get the latent vector
             encoded_masked_reconstructed_image = encoder(masked_reconstructed_image_resized)[2]
@@ -551,17 +543,10 @@ def test_single_image(image_path, csv_file):
        
 
             # Adding result to the table
-            process_results(
-                image_name=os.path.basename(image_path),
+            process_results(image_name=os.path.basename(image_path),
                 image_size=image.shape[2:],  # Shape of the input image
-                recon_loss_before=reconstruction_loss,
-                recon_loss_after=masked_reconstruction_loss,
-                method=method,
-                important_features=important_features,
-                original_prediction=original_class,
-                masked_prediction=masked_class,
-                masked_latent_vector=masked_latent_vector,
-            )
+                recon_loss_before=reconstruction_loss, recon_loss_after=masked_reconstruction_loss, method=method,important_features=important_features,
+                original_prediction=original_class, masked_prediction=masked_class, masked_latent_vector=masked_latent_vector,)
 
 def plot_reconstruction_loss(images, losses_before, losses_after):
     plt.figure(figsize=(10, 6))
@@ -663,63 +648,7 @@ test_single_image(
 # to print and save results
 print_and_save_results()
 
-# Function to apply different masking strategies based on user input until a counterfactual explanation is found.
-# def apply_masking_until_ce_found(latent_vector, classifier, decoder, actual_class):
-#     ce_found = False
-#     iteration_count = 0
-
-#     while not ce_found:
-#         # Prompt user for masking strategy
-#         masking_strategy = input("Choose a masking strategy ('zero', 'median', 'random'): ").strip().lower()
-
-#         # Validate input
-#         if masking_strategy not in ['zero', 'median', 'random']:
-#             print("Invalid strategy. Please choose 'zero', 'median', or 'random'.")
-#             continue
-
-#         # Apply LIME to identify important features
-#         explanation = apply_lime_on_latent_space(latent_vector, classifier, top_percentage=0.2)
-        
-#         # Determine the correct way to extract important features
-#         if isinstance(explanation, list) and all(isinstance(e, tuple) for e in explanation):
-#             # If explanation is a list of tuples (expected case)
-#             important_features = [int(feature.split("_")[-1]) for feature, _ in explanation]
-#         elif isinstance(explanation, list) and all(isinstance(e, int) for e in explanation):
-#             # If explanation is already a list of important feature indices
-#             important_features = explanation
-#         else:
-#             # Handle unexpected case (fallback)
-#             raise ValueError("Unexpected format for LIME explanation output.")
-
-#         # Mask the latent vector using the selected strategy
-#         masked_latent_vector = mask_latent_features(latent_vector, important_features, method=masking_strategy)
-        
-#         # Classify the masked latent vector
-#         masked_prediction = classifier(masked_latent_vector)
-#         masked_class = torch.argmax(masked_prediction, dim=1).item()
-
-#         # Check if the prediction has changed
-#         if masked_class != actual_class:
-#             ce_found = True
-#             print(f"Counterfactual explanation found after {iteration_count + 1} iterations with '{masking_strategy}' masking.")
-#             # Decode the latent vector to get the reconstructed image
-#             masked_reconstructed_image = decoder(masked_latent_vector)
-#             # Plot original and masked images
-#             plot_reconstructed_images(latent_vector, masked_latent_vector, masked_reconstructed_image, decoder)
-#             break
-
-#         iteration_count += 1
-#         print(f"Counterfactual explanation not found using '{masking_strategy}' masking. Trying again...")
-
-#         # Safety check to avoid infinite loop
-#         if iteration_count >= 10:
-#             print("After 10 iterations, a counterfactual explanation could not be found.")
-#             print("Possible reasons could be:")
-#             print("- The identified features are not impactful enough to change the model's decision.")
-#             # print("- The masking strategy might not be appropriate for altering key features that affect classification.")
-#             # print("- The latent representation might be too stable or robust against the modifications.")
-#             break
-def apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, masked_class):
+def apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, original_class):
     ce_found = False
     iteration_count = 0
 
@@ -743,11 +672,8 @@ def apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, ma
         
         # Resize the masked image to the input dimensions expected by the encoder
         masked_image_resized = F.interpolate(
-            masked_reconstructed_image,
-            size=(80, 160),  # Adjust size based on the input image size
-            mode="bilinear",
-            align_corners=False
-        )
+            masked_reconstructed_image, size=(80, 160),  # Adjust size based on the input image size
+            mode="bilinear", align_corners=False)
         
         # Re-encode the masked reconstructed image
         re_encoded_latent_vector = encoder(masked_image_resized)[2]
@@ -757,7 +683,7 @@ def apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, ma
         re_encoded_class = torch.argmax(re_encoded_prediction, dim=1).item()
 
         # Check if the prediction has changed
-        if re_encoded_class != masked_class:
+        if re_encoded_class != original_class:
             ce_found = True
             print(f"Counterfactual explanation found after {iteration_count + 1} iterations with '{masking_strategy}' masking.")
             plot_reconstructed_images(latent_vector, masked_latent_vector, masked_reconstructed_image, decoder)
@@ -801,6 +727,6 @@ def plot_reconstructed_images(original_latent_vector, masked_latent_vector, mask
 # Get the initial masked class from the classifier's prediction on the original latent vector
 with torch.no_grad():
     original_prediction = classifier(latent_vector)
-    masked_class = torch.argmax(original_prediction, dim=1).item()
+    original_class = torch.argmax(original_prediction, dim=1).item()
 
-apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, masked_class)
+apply_masking_until_ce_found(latent_vector, classifier, encoder, decoder, original_class)
