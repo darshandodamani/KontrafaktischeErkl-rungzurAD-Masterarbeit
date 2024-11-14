@@ -1,22 +1,18 @@
-from calendar import c
-from idna import encode
+import os
+import sys
 import torch
-from PIL import Image
-import torchvision.transforms as transforms
+import random
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import cv2
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-import numpy as np
-import sys
-import os
-from lime.lime_tabular import LimeTabularExplainer
-import pandas as pd
-from median_calculator import compute_dataset_medians
-import seaborn as sns
-from skimage.metrics import structural_similarity as ssim
-import cv2
-import random
-from skimage.metrics import mean_squared_error as mse, peak_signal_noise_ratio as psnr
+from PIL import Image
+from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
 from sewar.full_ref import vifp, uqi
+from lime.lime_tabular import LimeTabularExplainer
+import torchvision.transforms as transforms
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
@@ -54,7 +50,7 @@ decoder.eval()
 classifier.eval()
 
 # Fetch a random image from the dataset/test/ directory
-# test_dir = 'dataset/town7_dataset/test/'
+# test_dir = 'dataset/town7_dataset/train/'
 # random_image_filename = random.choice(os.listdir(test_dir))
 # print(f'Random Image Filename: {random_image_filename}')
 # image_path = os.path.join(test_dir, random_image_filename)
@@ -77,8 +73,8 @@ input_image = input_image.to(device)
 
 # Pass the image through the encoder, decoder, and classifier
 latent_vector = encoder(input_image)[2]               # Encode the image
-reconstructed_input_image = decoder(latent_vector)        # Decode the latent vector to reconstruct the image
-input_image_predicted_label = classifier(latent_vector)         # Predict the label
+reconstructed_input_image = decoder(latent_vector)    # Decode the latent vector to reconstruct the image
+input_image_predicted_label = classifier(latent_vector)  # Predict the label
 
 # Convert the reconstructed image tensor to a PIL image for plotting
 reconstructed_image = reconstructed_input_image.squeeze(0)  # Remove batch dimension
@@ -93,33 +89,22 @@ print(f'Input Image Predicted Label: {predicted_class}')
 input_image_resized = np.array(image.resize(reconstructed_image.size), dtype=np.float32) / 255.0
 reconstructed_image_np = np.array(reconstructed_image, dtype=np.float32) / 255.0  # Normalize to [0, 1]
 
-# MSE (Mean Squared Error)
-mse_value = mse(input_image_resized, reconstructed_image_np)
-print(f'Mean Squared Error (MSE): {mse_value}')
+# Image quality metrics for original vs reconstructed image
+metrics = {
+    "MSE": mse(input_image_resized, reconstructed_image_np),
+    "SSIM": ssim(input_image_resized, reconstructed_image_np, win_size=5, channel_axis=-1, data_range=1.0),
+    "PSNR": psnr(input_image_resized, reconstructed_image_np, data_range=1.0),
+    "VIF": vifp(input_image_resized, reconstructed_image_np),
+    "UQI": uqi(input_image_resized, reconstructed_image_np),
+}
 
-# SSIM (Structural Similarity Index)
-ssim_value = ssim(input_image_resized, reconstructed_image_np, win_size=5, channel_axis=-1, data_range=1.0)
-print(f'Structural Similarity Index (SSIM): {ssim_value}')
-
-# PSNR (Peak Signal-to-Noise Ratio)
-psnr_value = psnr(input_image_resized, reconstructed_image_np, data_range=1.0)
-print(f'Peak Signal-to-Noise Ratio (PSNR): {psnr_value}')
-
-# VIF (Visual Information Fidelity)
-vif_value = vifp(input_image_resized, reconstructed_image_np)
-print(f'Visual Information Fidelity (VIF): {vif_value}')
-
-# UQI (Universal Quality Index)
-uqi_value = uqi(input_image_resized, reconstructed_image_np)
-print(f'Universal Quality Index (UQI): {uqi_value}')
-
-
+# Print image quality metrics
+for metric, value in metrics.items():
+    print(f'{metric}: {value}')
 
 # Bar chart for metric comparison
-metrics = ['MSE', 'SSIM', 'PSNR', 'VIF', 'UQI']
-values = [mse_value, ssim_value, psnr_value, vif_value, uqi_value]
 plt.figure(figsize=(10, 5))
-sns.barplot(x=metrics, y=values, palette='viridis', hue=metrics, dodge=False, legend=False)
+sns.barplot(x=list(metrics.keys()), y=list(metrics.values()), hue=list(metrics.keys()), palette='viridis', dodge=False, legend=False)
 plt.title('Comparison of Image Quality Metrics')
 plt.ylabel('Metric Value')
 plt.savefig('plots/lime_plots/metrics_comparison.png')
@@ -133,9 +118,6 @@ plt.axis('off')
 plt.savefig('plots/lime_plots/heatmap_differences.png')
 
 # LIME-Based Masking on Latent Vector
-from lime import lime_tabular
-
-# Convert latent vector to numpy for LIME
 latent_vector_np = latent_vector.cpu().detach().numpy().reshape(1, -1)
 
 # Define a function that LIME will use to simulate changes in the latent space
@@ -145,66 +127,32 @@ def predict_with_latent(latent):
     return F.softmax(output, dim=1).cpu().detach().numpy()
 
 # Set up the LIME explainer for latent space
-explainer = lime_tabular.LimeTabularExplainer(latent_vector_np, mode='classification', feature_names=[f'latent_{i}' for i in range(latent_vector_np.shape[1])], discretize_continuous=False)
+explainer = LimeTabularExplainer(latent_vector_np, mode='classification', feature_names=[f'latent_{i}' for i in range(latent_vector_np.shape[1])], discretize_continuous=False)
 
 # Explain the latent representation with percentage-based feature selection
 explanation = explainer.explain_instance(latent_vector_np.flatten(), predict_with_latent, num_features=len(latent_vector_np.flatten()))
 
-# Sort features by their importance and filter positively and negatively contributing features
-positive_importance_list = [
-    (feature, weight) for feature, weight in explanation.as_list() if weight > 0
-]  # Keep only positive influence features
-
-negative_importance_list = [
-    (feature, weight) for feature, weight in explanation.as_list() if weight < 0
-]  # Keep only negative influence features
-
-# Sort positively contributing features in descending order by absolute weight
-positive_importance_list = sorted(positive_importance_list, key=lambda x: abs(x[1]), reverse=True)
-
-# Sort negatively contributing features in descending order by absolute weight
-negative_importance_list = sorted(negative_importance_list, key=lambda x: abs(x[1]), reverse=True)
+# Sort features by their importance and filter positively contributing features
+positive_importance_list = sorted(
+    [(feature, weight) for feature, weight in explanation.as_list() if weight > 0],
+    key=lambda x: abs(x[1]), reverse=True
+)
 
 # Calculate how many features to select based on the top percentage
 num_features_to_select = int(len(positive_importance_list) * 0.05)  # Adjust the percentage as needed
 
-# Plot the explanation to visualize both positive and negative feature importance
-fig, ax = plt.subplots(figsize=(20, 15))
-
-# Extract feature names and their corresponding importance values for positive and negative features
-positive_feature_names, positive_importance_values = zip(*positive_importance_list[:num_features_to_select])
-negative_feature_names, negative_importance_values = zip(*negative_importance_list[:num_features_to_select])
-
-# Assign colors based on the sign of importance: green for positive, red for negative
-colors = ['green'] * len(positive_importance_values) + ['red'] * len(negative_importance_values)
-
-# Combine positive and negative features for plotting
-total_feature_names = list(positive_feature_names) + list(negative_feature_names)
-total_importance_values = list(positive_importance_values) + list(negative_importance_values)
-print(f"Total Features: {total_feature_names}")
-
-# Set y-axis ticks and labels before plotting
-y_pos = range(len(total_feature_names))
-ax.set_yticks(y_pos)
-ax.set_yticklabels(total_feature_names, fontsize=14, fontweight='bold')
-
-# Plot a bar chart with thicker bars and color coding
-ax.barh(y_pos, total_importance_values, color=colors, height=0.8)
-
-# Set labels and title
-ax.set_ylabel("Latent Features", fontsize=16, fontweight='bold')
-ax.set_xlabel("Feature Importance", fontsize=16, fontweight='bold')
-plt.title(f"LIME Explanation: Top {int(num_features_to_select / len(positive_importance_list) * 100)}% Positive and Negative Feature Importance", fontsize=18, fontweight='bold')
-
-plt.tight_layout()
-plt.savefig("/home/selab/darshan/git-repos/plots/lime_plots/lime_explanation_combined_features.png")
+# Print important features being masked
+important_features = [int(feature.split("_")[-1]) for feature, _ in positive_importance_list[:num_features_to_select]]
+print("{:<15} {:<20} {:<20}".format('Feature Index', 'Original Value', 'Median Value'))
+print("{:<15} {:<20} {:<20}".format('-' * 15, '-' * 20, '-' * 20))
 
 # Apply median masking based on LIME's important features
 masked_latent_vector = latent_vector_np.flatten()
-important_features = [int(feature.split("_")[-1]) for feature, _ in positive_importance_list[:num_features_to_select]]
-print(f"Features being masked: {important_features}")
 for feature_index in important_features:
-    masked_latent_vector[feature_index] = median_values[feature_index]  # Set the important feature to its median value
+    original_value = masked_latent_vector[feature_index]
+    median_value = median_values[feature_index]
+    print("{:<15} {:<20} {:<20}".format(feature_index, original_value, median_value))
+    masked_latent_vector[feature_index] = median_value
 
 # Convert masked latent vector back to tensor
 masked_latent_tensor = torch.tensor(masked_latent_vector, dtype=torch.float32).to(device).reshape(1, -1)
@@ -213,8 +161,7 @@ masked_latent_tensor = torch.tensor(masked_latent_vector, dtype=torch.float32).t
 reconstructed_image_after_masking = decoder(masked_latent_tensor).squeeze(0)
 reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking)
 
-# Now, send the reconstructed image after masking to counterfactual Step.
-# To do that, send the image to the encoder and get the latent vector and send that to the classifier to get the label
+# Counterfactual analysis
 reconstructed_image_after_masking_tensor = transform(reconstructed_image_after_masking_pil).unsqueeze(0).to(device)
 masked_latent_vector_cf = encoder(reconstructed_image_after_masking_tensor)[2]
 masked_image_predicted_label = classifier(masked_latent_vector_cf)
@@ -224,73 +171,59 @@ print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_afte
 
 # Check if counterfactual explanation is generated
 if predicted_class_after_masking != predicted_class:
-    print("Counterfactual Explanation Generated: The label has changed from {predicted_class} to {predicted_class_after_masking}")
+    print(f"Counterfactual Explanation Generated: The label has changed from {predicted_class} to {predicted_class_after_masking}")
 
-    # Measure metrics for the counterfactual explanation
-    reconstructed_image_after_masking_np = np.array(reconstructed_image_after_masking_pil, dtype=np.float32) / 255.0  # Normalize to [0, 1]
+    # Metrics for counterfactual explanation
+    reconstructed_image_after_masking_np = np.array(reconstructed_image_after_masking_pil, dtype=np.float32) / 255.0
+    counterfactual_metrics = {
+        "MSE": mse(input_image_resized, reconstructed_image_after_masking_np),
+        "SSIM": ssim(input_image_resized, reconstructed_image_after_masking_np, win_size=5, channel_axis=-1, data_range=1.0),
+        "PSNR": psnr(input_image_resized, reconstructed_image_after_masking_np, data_range=1.0),
+        "VIF": vifp(input_image_resized, reconstructed_image_after_masking_np),
+        "UQI": uqi(input_image_resized, reconstructed_image_after_masking_np),
+    }
 
-    # MSE (Mean Squared Error) for Counterfactual Explanation
-    mse_cf_value = mse(input_image_resized, reconstructed_image_after_masking_np)
-    print(f'Mean Squared Error (MSE) for Counterfactual: {mse_cf_value}')
-
-    # SSIM (Structural Similarity Index) for Counterfactual Explanation
-    ssim_cf_value = ssim(input_image_resized, reconstructed_image_after_masking_np, win_size=5, channel_axis=-1, data_range=1.0)
-    print(f'Structural Similarity Index (SSIM) for Counterfactual: {ssim_cf_value}')
-
-    # PSNR (Peak Signal-to-Noise Ratio) for Counterfactual Explanation
-    psnr_cf_value = psnr(input_image_resized, reconstructed_image_after_masking_np, data_range=1.0)
-    print(f'Peak Signal-to-Noise Ratio (PSNR) for Counterfactual: {psnr_cf_value}')
-
-    # VIF (Visual Information Fidelity) for Counterfactual Explanation
-    vif_cf_value = vifp(input_image_resized, reconstructed_image_after_masking_np)
-    print(f'Visual Information Fidelity (VIF) for Counterfactual: {vif_cf_value}')
-
-    # UQI (Universal Quality Index) for Counterfactual Explanation
-    uqi_cf_value = uqi(input_image_resized, reconstructed_image_after_masking_np)
-    print(f'Universal Quality Index (UQI) for Counterfactual: {uqi_cf_value}')
+    # Print metrics for counterfactual explanation
+    for metric, value in counterfactual_metrics.items():
+        print(f'{metric} for Counterfactual: {value}')
 
     # Bar chart for metric comparison between original and counterfactual
-    metrics = ['MSE', 'SSIM', 'PSNR', 'VIF', 'UQI']
-    original_values = [mse_value, ssim_value, psnr_value, vif_value, uqi_value]
-    counterfactual_values = [mse_cf_value, ssim_cf_value, psnr_cf_value, vif_cf_value, uqi_cf_value]
+    original_values = list(metrics.values())
+    counterfactual_values = list(counterfactual_metrics.values())
 
     x = np.arange(len(metrics))
     width = 0.35
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(x - width/2, original_values, width, label='Original', color='blue')
-    ax.bar(x + width/2, counterfactual_values, width, label='Counterfactual', color='orange')
+    ax.bar(x - width / 2, original_values, width, label='Original', color='blue')
+    ax.bar(x + width / 2, counterfactual_values, width, label='Counterfactual', color='orange')
 
     ax.set_xlabel('Metrics', fontsize=14)
     ax.set_ylabel('Values', fontsize=14)
     ax.set_title('Comparison of Image Quality Metrics: Original vs Counterfactual', fontsize=16, fontweight='bold')
     ax.set_xticks(x)
-    ax.set_xticklabels(metrics)
+    ax.set_xticklabels(metrics.keys())
     ax.legend()
 
     plt.tight_layout()
     plt.savefig('plots/lime_plots/metrics_comparison_original_vs_counterfactual.png')
+    print(f"Conclusion: The masked features significantly impacted the classification outcome, changing the label from {predicted_class} to {predicted_class_after_masking}. This indicates that these features {important_features} play a crucial role in the model's decision-making process, providing valuable insight into the model's behavior.")
 else:
     print("No Counterfactual Explanation Generated: The label remains the same.")
-# print the input image and the reconstructed image after masking
-print(f'Input Image Prediction was :  {predicted_class}, Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
 
-
-# Plot original and reconstructed images together with the same size
+# Plot original, reconstructed, and counterfactual images together with the same size
 fig, axes = plt.subplots(1, 3, figsize=(25, 10))
 
 # Original Input Image
 axes[0].imshow(image.resize(reconstructed_image.size))
 axes[0].set_title('Input Image', fontsize=20)
 axes[0].axis('off')
-# Save the original image
 image.save('plots/lime_plots/Input_image.png')
 
 # Reconstructed Image
 axes[1].imshow(reconstructed_image)
 axes[1].set_title('Reconstructed Input Image', fontsize=20)
 axes[1].axis('off')
-# Save the reconstructed input image
 reconstructed_image.save('plots/lime_plots/Reconstructed_input_image.png')
 
 # Reconstructed Image after Median Masking
@@ -298,7 +231,6 @@ reconstructed_image_after_masking_resized = reconstructed_image_after_masking_pi
 axes[2].imshow(reconstructed_image_after_masking_resized)
 axes[2].set_title('LIME Reconstructed Image after Median Masking', fontsize=20)
 axes[2].axis('off')
-# Save the reconstructed image after masking
 reconstructed_image_after_masking_pil.save('plots/lime_plots/Reconstructed_image_after_masking.png')
 
 plt.tight_layout()
