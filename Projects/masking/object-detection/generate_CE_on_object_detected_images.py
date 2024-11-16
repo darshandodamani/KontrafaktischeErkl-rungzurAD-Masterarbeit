@@ -42,7 +42,7 @@ classifier.eval()
 
 # Manually select an image instead of choosing randomly
 test_dir = 'dataset/town7_dataset/train/'
-image_filename = 'town7_000276.png'
+image_filename = 'town7_000060.png'
 image_path = os.path.join(test_dir, image_filename)
 
 # Load and preprocess the image

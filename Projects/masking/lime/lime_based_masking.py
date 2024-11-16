@@ -1,5 +1,6 @@
 import os
 import sys
+from sympy import per
 import torch
 import random
 import numpy as np
@@ -57,7 +58,7 @@ classifier.eval()
 
 # manually select an image instead of choosing randomly
 test_dir = 'dataset/town7_dataset/train/'
-image_filename = 'town7_000276.png'
+image_filename = 'town7_000060.png'
 image_path = os.path.join(test_dir, image_filename)
 
 # Load and preprocess the image
@@ -137,37 +138,51 @@ positive_importance_list = sorted(
     [(feature, weight) for feature, weight in explanation.as_list() if weight > 0],
     key=lambda x: abs(x[1]), reverse=True
 )
+#loop to 
+percentage_value = 0
+step_size = 0.01
 
-# Calculate how many features to select based on the top percentage
-num_features_to_select = int(len(positive_importance_list) * 0.05)  # Adjust the percentage as needed
+#state the loops with the percentage value and do the iteration util it find the couterfactul explanation
+while(percentage_value < 1):
+    percentage_value += step_size
 
-# Print important features being masked
-important_features = [int(feature.split("_")[-1]) for feature, _ in positive_importance_list[:num_features_to_select]]
-print("{:<15} {:<20} {:<20}".format('Feature Index', 'Original Value', 'Median Value'))
-print("{:<15} {:<20} {:<20}".format('-' * 15, '-' * 20, '-' * 20))
+    # Calculate how many features to select based on the top percentage
+    num_features_to_select = int(len(positive_importance_list) * percentage_value)  # Adjust the percentage as needed
 
-# Apply median masking based on LIME's important features
-masked_latent_vector = latent_vector_np.flatten()
-for feature_index in important_features:
-    original_value = masked_latent_vector[feature_index]
-    median_value = median_values[feature_index]
-    print("{:<15} {:<20} {:<20}".format(feature_index, original_value, median_value))
-    masked_latent_vector[feature_index] = median_value
+    # Print important features being masked
+    important_features = [int(feature.split("_")[-1]) for feature, _ in positive_importance_list[:num_features_to_select]]
+    print("{:<15} {:<20} {:<20}".format('Feature Index', 'Original Value', 'Median Value'))
+    print("{:<15} {:<20} {:<20}".format('-' * 15, '-' * 20, '-' * 20))
 
-# Convert masked latent vector back to tensor
-masked_latent_tensor = torch.tensor(masked_latent_vector, dtype=torch.float32).to(device).reshape(1, -1)
+    # Apply median masking based on LIME's important features
+    masked_latent_vector = latent_vector_np.flatten()
+    for feature_index in important_features:
+        original_value = masked_latent_vector[feature_index]
+        median_value = median_values[feature_index]
+        print("{:<15} {:<20} {:<20}".format(feature_index, original_value, median_value))
+        masked_latent_vector[feature_index] = median_value
 
-# Reconstruct the image using the masked latent vector
-reconstructed_image_after_masking = decoder(masked_latent_tensor).squeeze(0)
-reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking)
+    # Convert masked latent vector back to tensor
+    masked_latent_tensor = torch.tensor(masked_latent_vector, dtype=torch.float32).to(device).reshape(1, -1)
 
-# Counterfactual analysis
-reconstructed_image_after_masking_tensor = transform(reconstructed_image_after_masking_pil).unsqueeze(0).to(device)
-masked_latent_vector_cf = encoder(reconstructed_image_after_masking_tensor)[2]
-masked_image_predicted_label = classifier(masked_latent_vector_cf)
-predicted_label_after_masking = torch.argmax(masked_image_predicted_label, dim=1).item()
-predicted_class_after_masking = "STOP" if predicted_label_after_masking == 0 else "GO"
-print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
+    # Reconstruct the image using the masked latent vector
+    reconstructed_image_after_masking = decoder(masked_latent_tensor).squeeze(0)
+    reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking)
+
+    # Counterfactual analysis
+    reconstructed_image_after_masking_tensor = transform(reconstructed_image_after_masking_pil).unsqueeze(0).to(device)
+    masked_latent_vector_cf = encoder(reconstructed_image_after_masking_tensor)[2]
+    masked_image_predicted_label = classifier(masked_latent_vector_cf)
+    predicted_label_after_masking = torch.argmax(masked_image_predicted_label, dim=1).item()
+    predicted_class_after_masking = "STOP" if predicted_label_after_masking == 0 else "GO"
+    print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
+
+    if predicted_class_after_masking != predicted_class:
+        break
+        
+# Print the percentage value
+print(f"Percentage Value: {percentage_value}")
+print("*******")
 
 # Check if counterfactual explanation is generated
 if predicted_class_after_masking != predicted_class:
@@ -210,6 +225,7 @@ if predicted_class_after_masking != predicted_class:
     print(f"Conclusion: The masked features significantly impacted the classification outcome, changing the label from {predicted_class} to {predicted_class_after_masking}. This indicates that these features {important_features} play a crucial role in the model's decision-making process, providing valuable insight into the model's behavior.")
 else:
     print("No Counterfactual Explanation Generated: The label remains the same.")
+
 
 # Plot original, reconstructed, and counterfactual images together with the same size
 fig, axes = plt.subplots(1, 3, figsize=(25, 10))

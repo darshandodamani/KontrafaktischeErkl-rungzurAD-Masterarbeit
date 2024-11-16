@@ -1,120 +1,160 @@
 import os
-import cv2
-import numpy as np 
 import sys
-import random
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend to save plots without a display
-import matplotlib.pyplot as plt
 import torch
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+import seaborn as sns
+from PIL import Image
+from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
+from sewar.full_ref import vifp, uqi
 
-# Add Python path to include the directory where 'encoder.py' is located (if needed)
+# Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder"))
 )
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from encoder import VariationalEncoder
+from decoder import Decoder
+from classifier import ClassifierModel as Classifier
 
-# Load the images from the dataset
-dataset_dir = 'dataset/town7_dataset/test'
-image_files = os.listdir(dataset_dir)
+# Paths to models
+encoder_path = "model/epochs_500_latent_128_town_7/var_encoder_model.pth"
+decoder_path = "model/epochs_500_latent_128_town_7/decoder_model.pth"
+classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
 
-# Ensure there are enough images in the dataset
-dataset_size = 10
-if len(image_files) < dataset_size:
-    raise FileNotFoundError(f"Not enough images found in directory: {dataset_dir}")
+# Load the models
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-selected_images = []
+encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(device)
+decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
+classifier = Classifier().to(device)
 
-# Randomly select 10 images from the dataset
-while len(selected_images) < dataset_size:
-    image_filename = random.choice(image_files)
-    image_path = os.path.join(dataset_dir, image_filename)
+encoder.load_state_dict(torch.load(encoder_path, map_location=device, weights_only=True))
+decoder.load_state_dict(torch.load(decoder_path, map_location=device, weights_only=True))
+classifier.load_state_dict(torch.load(classifier_path, map_location=device, weights_only=True))
 
-    # Load the image
-    image = cv2.imread(image_path)
+encoder.eval()
+decoder.eval()
+classifier.eval()
 
-    if image is None:
-        print(f"Failed to load image: {image_path}")
-        continue
+# Manually select an image instead of choosing randomly
+test_dir = 'dataset/town7_dataset/train/'
+image_filename = 'town7_011990.png'
+image_path = os.path.join(test_dir, image_filename)
 
-    selected_images.append(image)
+# Load and preprocess the image
+transform = transforms.Compose([
+    transforms.Resize((80, 160)),
+    transforms.ToTensor(),
+])
+image = Image.open(image_path).convert('RGB')
+input_image = transform(image).unsqueeze(0).to(device)
 
-# Perform Grid-based Masking with Random Shifts
-def grid_masking_with_shift(image, grid_size_range=(16, 64), keep_ratio=0.5, mask_color=(0, 0, 0)):
-    """
-    Apply GridMask to the input image with random shifts.
+# Step 1: Pass the input image through encoder, decoder, and classifier
+latent_vector = encoder(input_image)[2]
+reconstructed_input_image = decoder(latent_vector)
+input_image_predicted_label = classifier(latent_vector)
 
-    Args:
-        image (numpy.ndarray): Input image.
-        grid_size_range (tuple): Range for selecting grid size (default: (16, 64)).
-        keep_ratio (float): Ratio of grid units to keep (default: 0.5).
-        mask_color (tuple): Color to use for masking (default: (0, 0, 0)).
+# Convert the reconstructed image tensor to a PIL image for plotting
+reconstructed_image_pil = transforms.ToPILImage()(reconstructed_input_image.squeeze(0).cpu())
 
-    Returns:
-        numpy.ndarray: Image with grid-based masking applied.
-    """
-    h, w = image.shape[:2]
-    mask = np.ones((h, w), dtype=np.float32)
+# Print the predicted label
+predicted_label = torch.argmax(input_image_predicted_label, dim=1).item()
+predicted_class = "STOP" if predicted_label == 0 else "GO"
+print(f'Input Image Predicted Label: {predicted_class}')
 
-    # Randomly select grid size within the specified range
-    grid_size = random.randint(grid_size_range[0], grid_size_range[1])
+# apply grid based masking on the Inut Image
+def grid_masking(input_image, grid_size=(10, 10), mask_value=0, pos=0):
+      # Mask the first detected object
+    masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
+    
+    # compute x and y coordinates for the grid field identified by pos
+    x, y = grid_size
+    x_pos = pos % x
+    y_pos = pos // x
+    x_size = masked_image.shape[1] // x
+    y_size = masked_image.shape[0] // y
+    x_start = x_pos * x_size
+    y_start = y_pos * y_size
+    x_end = x_start + x_size
+    y_end = y_start + y_size
+    masked_image[y_start:y_end, x_start:x_end] = mask_value
+    
 
-    # Random shift for δx and δy
-    delta_x = random.randint(0, grid_size)
-    delta_y = random.randint(0, grid_size)
 
-    # Loop through the image creating a grid pattern with random shifts
-    for i in range(delta_y, h, grid_size):
-        for j in range(delta_x, w, grid_size):
-            if random.random() > keep_ratio:  # Mask or keep based on keep ratio
-                mask[i:i + grid_size, j:j + grid_size] = 0
+    # Convert masked image back to tensor
+    return transforms.ToTensor()(masked_image).unsqueeze(0).to(device)
 
-    # Apply mask to the image
-    masked_image = image * mask[..., np.newaxis]  # Preserve color channels
+min_confidende = 0.0
 
-    return masked_image
+for grid in [(10, 5), (4, 2)]:
+    # iterate pver the grid positions
+    for pos in range(grid[0] * grid[1]):
+        grid_based_masked_image = grid_masking(input_image, grid_size=grid, pos=pos)
 
-print("Starting grid-based masking...")
+        # send the grid based masked image to the encoder, decoder, and classifier
+        latent_vector_after_masking = encoder(grid_based_masked_image)[2]
+        reconstructed_image_after_masking = decoder(latent_vector_after_masking)
+        predicted_class_after_masking = classifier(latent_vector_after_masking)
 
-# Select an image for demonstration
-image = selected_images[0]
-print(f"Selected image dimensions: {image.shape}")
+        # Convert the reconstructed image tensor to a PIL image for plotting
+        reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking.squeeze(0).cpu())
 
-# Create copies of the original image for further processing
-original_image = image.copy()  # Original image for reference
+        # Print the predicted label after masking
+        predicted_label_after_masking = torch.argmax(predicted_class_after_masking, dim=1).item()
+        
+        # compute confidence of predicted class after masking
+        confidence = F.softmax(predicted_class_after_masking, dim=1)[0]
+    
+        
+        predicted_class_after_masking = "STOP" if predicted_label_after_masking == 0 else "GO"
+        if predicted_class_after_masking != predicted_class:
+            print(f'Counterfactual explanation generated at grid position {pos}')
+            print(f'Grid Position: {pos}, Confidence: {confidence}')
+            # check if confidence of counterfactual is high
+            if confidence[0] > min_confidende or confidence[1] > min_confidende:
+                # break out of outer loop
+                break
+            #break # stop if counterfactual explanation is generated
+    if predicted_class_after_masking != predicted_class:
+        break
 
-# Apply grid-based masking with random shifts to the image
-masked_image = grid_masking_with_shift(
-    original_image, 
-    grid_size_range=(16, 64), 
-    keep_ratio=0.5, 
-    mask_color=(0, 0, 0)
-)
-print("Grid-based masking applied.")
+print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
 
-# Create output directory
-output_dir = "output"
-os.makedirs(output_dir, exist_ok=True)
-
-# Save original and masked images
-original_output_path = os.path.join(output_dir, "original_image.png")
-masked_output_path = os.path.join(output_dir, "grid_masked_image.png")
-cv2.imwrite(original_output_path, original_image)
-cv2.imwrite(masked_output_path, masked_image)
-
-# Save plot
+# plot the original image, reconstructed image, and reconstructed image after grid-based masking
 plt.figure(figsize=(12, 6))
-plt.subplot(1, 2, 1)
-plt.imshow(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
+plt.subplot(1, 3, 1)
+plt.imshow(image)
 plt.title("Original Image")
-plt.axis("off")
+plt.axis('off')
 
-plt.subplot(1, 2, 2)
-plt.imshow(cv2.cvtColor(masked_image, cv2.COLOR_BGR2RGB))
-plt.title("Grid-based Masked Image")
-plt.axis("off")
+plt.subplot(1, 3, 2)
+plt.imshow(reconstructed_image_pil)
+plt.title("Reconstructed Image")
+plt.axis('off')
 
-plot_output_path = os.path.join(output_dir, "grid_masking_plot.png")
-plt.savefig(plot_output_path)
-print(f"Images and plot saved to {output_dir}")
+plt.subplot(1, 3, 3)
+plt.imshow(reconstructed_image_after_masking_pil)
+plt.title("Reconstructed Image after Masking")
+plt.axis('off')
+
+# save the plot
+plt.savefig("plots/grid_based_masking_images/grid_based_masking.png")
+
+# save the grid based masked image
+grid_based_masked_image_pil = transforms.ToPILImage()(grid_based_masked_image.squeeze(0).cpu())
+grid_based_masked_image_pil.save("plots/grid_based_masking_images/grid_based_masked_image.png")
+
+
+
+if predicted_class_after_masking != predicted_class:
+    print("Counterfactual explanation is generated.")
+else:
+    print("Counterfactual explanation is not generated.")
+    
+# Plot the original image, reconstructed image, and reconstructed image after grid-based masking
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 3, 1)
