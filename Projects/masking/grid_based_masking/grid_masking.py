@@ -47,12 +47,12 @@ classifier.eval()
 # image_path = os.path.join(test_dir, image_filename)
 
 # Define dataset directory and list all image files
-test_dir = 'dataset/town7_dataset/train/'
-image_files = [f for f in os.listdir(test_dir) if f.endswith('.png')]
-image_paths = [os.path.join(test_dir, f) for f in image_files]
+datatest_dir = 'dataset/town7_dataset/test/'
+image_files = [f for f in os.listdir(datatest_dir) if f.endswith('.png')]
+image_paths = [os.path.join(datatest_dir, f) for f in image_files]
 
 # Output file for results
-output_file = "grid_based_counterfactual_results.csv"
+output_file = "plots/grid_based_masking_images/grid_based_counterfactual_results_test.csv"
 
 # Load and preprocess the image
 transform = transforms.Compose([
@@ -82,7 +82,7 @@ predicted_class = "STOP" if predicted_label == 0 else "GO"
 print(f'Input Image Predicted Label: {predicted_class}')
 
 # apply grid based masking on the Inut Image
-def grid_masking(input_image, grid_size=(10, 10), mask_value=0, pos=0):
+def grid_masking(input_image, grid_size=(10, ), mask_value=0, pos=0):
       # Mask the first detected object
     masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
     
@@ -220,7 +220,7 @@ with open(output_file, mode='w', newline='') as file:
     
     # Process each image in the dataset
     for image_filename in image_files:
-        image_path = os.path.join(test_dir, image_filename)
+        image_path = os.path.join(datatest_dir, image_filename)
         image = Image.open(image_path).convert('RGB')
         input_image = transform(image).unsqueeze(0).to(device)
         
