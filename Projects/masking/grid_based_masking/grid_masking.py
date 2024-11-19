@@ -122,7 +122,10 @@ for grid in grid_sizes:
         # Pass the masked image through encoder, decoder, and classifier
         latent_vector_after_masking = encoder(grid_based_masked_image)[2]
         reconstructed_image_after_masking = decoder(latent_vector_after_masking)
-        predicted_class_after_masking = classifier(latent_vector_after_masking)
+        
+        # send the reconstructed_image_after_masking to encoder to get the predicted class
+        latent_vector_after_masking_for_CE = encoder(reconstructed_image_after_masking)[2]
+        predicted_class_after_masking = classifier(latent_vector_after_masking_for_CE)
 
         # Convert the reconstructed image after masking to a PIL image
         reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking.squeeze(0).cpu())
@@ -245,6 +248,8 @@ with open(output_file, mode='w', newline='') as file:
                 grid_based_masked_image = grid_masking(input_image, grid_size=grid, pos=pos)
                 latent_vector_after_masking = encoder(grid_based_masked_image)[2]
                 reconstructed_image_after_masking = decoder(latent_vector_after_masking)
+                latent_vector_after_masking_for_CE = encoder(reconstructed_image_after_masking)[2]
+                predicted_class_after_masking = classifier(latent_vector_after_masking_for_CE)
                 predicted_class_after_masking = classifier(latent_vector_after_masking)
                 confidence = F.softmax(predicted_class_after_masking, dim=1)[0]
                 predicted_label_after_masking = torch.argmax(predicted_class_after_masking, dim=1).item()
