@@ -1,153 +1,170 @@
-# location: Projects/masking/object-detection/object_detection_based_masking.py
 import os
+import sys
 import torch
-import cv2
-import pandas as pd
+import random
+import numpy as np
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+import seaborn as sns
+import csv
+from PIL import Image, ImageDraw
+from skimage.transform import resize
+from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
+from sewar.full_ref import vifp, uqi
 
-# Load pre-trained YOLO model (YOLOv5)
-# force_model=True | can make it True if you want to reload the model again it means if I don't want to use the cache model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=True) 
+# Add Python path to include the directory where 'encoder.py' is located
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder"))
+)
 
-# Define classes to mask (e.g., vehicles, pedestrians, traffic lights, traffic signs)
-# classes_to_mask = ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'traffic light', 'stop sign', 'sign board']
-# Mask all detected objects
-classes_to_mask = model.names
+from encoder import VariationalEncoder
+from decoder import Decoder
+from classifier import ClassifierModel as Classifier
 
-# Load all images from the dataset
-dataset_dir = 'dataset/town7_dataset/test' 
-csv_dir = 'dataset/town7_dataset/test/labeled_test_data_log.csv'
-image_files = [f for f in os.listdir(dataset_dir) if os.path.isfile(os.path.join(dataset_dir, f))]
+# Paths to models
+encoder_path = "model/epochs_500_latent_128_town_7/var_encoder_model.pth"
+decoder_path = "model/epochs_500_latent_128_town_7/decoder_model.pth"
+classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
 
-# Load CSV file to keep track of labels and detected objects
-df = pd.read_csv(csv_dir)
-results_list = []
+# Load the models
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Initialize counters for statistics
-total_images = len(image_files)
-images_with_detections = 0
-images_masked = 0
+encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(device)
+decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
+classifier = Classifier().to(device)
 
-# Iterate over all images in the dataset
-for image_filename in image_files:
-    image_path = os.path.join(dataset_dir, image_filename)
+encoder.load_state_dict(torch.load(encoder_path, map_location=device, weights_only=True))
+decoder.load_state_dict(torch.load(decoder_path, map_location=device, weights_only=True))
+classifier.load_state_dict(torch.load(classifier_path, map_location=device, weights_only=True))
 
-    # Load the image
-    image = cv2.imread(image_path)
+encoder.eval()
+decoder.eval()
+classifier.eval()
 
-    if image is None:
-        print(f"Failed to load image: {image_filename}. Skipping.")
-        continue
+# Manually select an image instead of choosing randomly
+# test_dir = 'dataset/town7_dataset/train/'
+# image_filename = 'town7_000967.png'
+# image_path = os.path.join(test_dir, image_filename)
 
-    # Perform object detection using YOLOv5
-    results = model(image)
-    detections = results.xyxy[0]  # Get bounding box coordinates
+# # Select and preprocess the image
+test_dir = 'dataset/town7_dataset/train/'
+image_filename = random.choice(os.listdir(test_dir))
+print(f"Selected Image: {image_filename}")
+image_path = os.path.join(test_dir, image_filename)
 
-    if len(detections) == 0:
-        print(f"No objects detected in image: {image_filename}. Skipping image.")
-        continue
+# YOLOv5 Model
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
 
-    images_with_detections += 1
-    images_masked += 1
+# Helper function to calculate metrics
+def calculate_metrics(original, reconstructed):
+    original_np = original.cpu().squeeze().permute(1, 2, 0).numpy()
+    reconstructed_np = reconstructed.cpu().squeeze().permute(1, 2, 0).detach().numpy()
+    
+    reconstructed_np_resized = resize(reconstructed_np, original_np.shape, anti_aliasing=True)
 
-    # Create copies of the original image for further processing
-    original_image = image.copy()
-    detected_image = image.copy()
-    masked_image = image.copy()
+    metrics = {
+        "SSIM": ssim(original_np, reconstructed_np_resized, channel_axis=-1, data_range=1.0),
+        "MSE": mse(original_np, reconstructed_np_resized),
+        "PSNR": psnr(original_np, reconstructed_np_resized, data_range=1.0),
+        "VIFP": vifp(original_np, reconstructed_np_resized),
+        "UQI": uqi(original_np, reconstructed_np_resized),
+    }
+    return metrics
 
-    # Iterate over detected bounding boxes and mask the respective regions
-    for detection in detections:
-        x_min, y_min, x_max, y_max, conf, cls = detection[:6]
-        x_min, y_min, x_max, y_max = map(int, [x_min, y_min, x_max, y_max])
+# Load and preprocess the image
+def process_dataset(dataset_dir, csv_filename):
+    transform = transforms.Compose([
+        transforms.Resize((80, 160)),
+        transforms.ToTensor(),
+    ])
 
-        # Ensure bounding box coordinates are within image boundaries
-        x_min = max(0, x_min)
-        y_min = max(0, y_min)
-        x_max = min(image.shape[1], x_max)
-        y_max = min(image.shape[0], y_max)
+    # Prepare CSV file to save the summary
+    with open(csv_filename, "w", newline="") as csvfile:
+        fieldnames = [
+            "Image File", "Prediction", "Grid Size & Position", "Grid Position", "Counterfactual Found", 
+            "Confidence", "SSIM", "MSE", "PSNR", "UQI", "VIFP"
+        ]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
 
-        # Mask the detected region
-        masked_image[y_min:y_max, x_min:x_max] = 0
+        # Iterate through all images in the dataset directory
+        for image_filename in os.listdir(dataset_dir):
+            if not image_filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                continue
 
-        # Draw bounding box on detected image for visualization
-        class_name = model.names[int(cls)]
-        cv2.rectangle(detected_image, (x_min, y_min), (x_max, y_max), (255, 0, 0), 1)
+            image_path = os.path.join(dataset_dir, image_filename)
+            image = Image.open(image_path).convert('RGB')
+            input_image = transform(image).unsqueeze(0).to(device)
 
-        # Append detection information to results list
-        results_list.append({
-            'image_filename': image_filename,
-            'class_name': class_name,
-            'confidence': float(conf),
-            'x_min': x_min,
-            'y_min': y_min,
-            'x_max': x_max,
-            'y_max': y_max
-        })
+            # Step 1: Send the image to encoder, decoder, and classifier
+            latent_vector = encoder(input_image)[2]
+            reconstructed_image = decoder(latent_vector)
+            input_predicted_label = classifier(latent_vector)
+            predicted_class = "STOP" if torch.argmax(input_predicted_label, dim=1).item() == 0 else "GO"
+            print(f"Input Image Predicted Label: {predicted_class}")
 
-    # Plot the original image, detected objects, and masked image
-    fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+            # Step 2: YOLOv5 Detection
+            results = model(image)
+            detections = results.xyxy[0]
+            if len(detections) == 0:
+                print("No objects detected in the image. Skipping further steps.")
+                continue
 
-    axes[0].imshow(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
-    axes[0].set_title("Original Image")
-    axes[0].axis("off")
+            print(f"Number of objects detected: {len(detections)}")
+            classes_detected = [results.names[int(det[5])] for det in detections]
+            print(f"Classes detected: {classes_detected}")
 
-    axes[1].imshow(cv2.cvtColor(detected_image, cv2.COLOR_BGR2RGB))
-    axes[1].set_title("Detected Objects with Confidence")
-    axes[1].axis("off")
+            for det in detections:
+                print(f"Detected Object: {results.names[int(det[5])]} (Confidence: {det[4]:.2f})")
 
-    for idx, detection in enumerate(detections):
-        x_min, y_min, x_max, y_max, conf, cls = detection[:6]
-        class_name = model.names[int(cls)]
-        axes[1].text(5, 15 + 20 * idx, f"{class_name} {float(conf):.2f}", fontsize=8, color='red')
+            # Step 3-5: Iterate through detected objects for counterfactual generation
+            output_summary = []
+            for obj_index, detection in enumerate(detections):
+                print(f"\nProcessing Object {obj_index + 1}/{len(detections)}...")
+                x_min, y_min, x_max, y_max = map(int, detection[:4])
+                confidence = detection[4].item()
+                cls_label = results.names[int(detection[5])]
 
-    axes[2].imshow(cv2.cvtColor(masked_image, cv2.COLOR_BGR2RGB))
-    axes[2].set_title("Masked Image")
-    axes[2].axis("off")
+                # Mask object
+                masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
+                masked_image[y_min:y_max, x_min:x_max] = 0
+                masked_image_tensor = transforms.ToTensor()(masked_image).unsqueeze(0).to(device)
 
-    final_plot_dir = 'plots/object_detection_using_yolov5/final_object_detection_images_with_original'
-    os.makedirs(final_plot_dir, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(f'{final_plot_dir}/plot_{image_filename}_1.png')
-    plt.close(fig)
+                # Step 4: Reconstruction and metrics
+                masked_latent_vector = encoder(masked_image_tensor)[2]
+                reconstructed_masked_image = decoder(masked_latent_vector)
+                metrics_masked = calculate_metrics(input_image, reconstructed_masked_image)
 
-    # Save individual images (masked)
-    masked_image_dir = 'plots/object_detection_using_yolov5/masked_images'
-    os.makedirs(masked_image_dir, exist_ok=True)
-    masked_image_path = f'{masked_image_dir}/masked_image_{image_filename}'
-    cv2.imwrite(masked_image_path, masked_image)
+                # Step 5: Counterfactual generation
+                masked_predicted_label = torch.argmax(classifier(masked_latent_vector), dim=1).item()
+                masked_predicted_class = "STOP" if masked_predicted_label == 0 else "GO"
 
-    # Print information about what YOLO is masking
-    for detection in detections:
-        x_min, y_min, x_max, y_max, conf, cls = detection[:6]
-        class_name = model.names[int(cls)]
-        print(f"Masked object: {class_name} with confidence {conf:.2f} in image: {image_filename}")
+                print(f"Original Label: {predicted_class}, Masked Label: {masked_predicted_class}")
+                if masked_predicted_class != predicted_class:
+                    print(f"Counterfactual Explanation Found: Label changed from {predicted_class} to {masked_predicted_class} by masking object {obj_index + 1}.")
+                    counterfactual_found = True
 
-# Save detection results to CSV
-results_df = pd.DataFrame(results_list)
-detection_results_csv_path = 'plots/object_detection_using_yolov5/detection_results.csv'
-results_df.to_csv(detection_results_csv_path, index=False)
-print(f"Detection results saved to: {detection_results_csv_path}")
+                    # Store summary details only if counterfactual explanation is found
+                    summary = {
+                        "Image File": image_filename,
+                        "Prediction": predicted_class,
+                        "Grid Size & Position": f"({x_min}, {y_min}), ({x_max}, {y_max})",
+                        "Grid Position": f"({x_min}, {y_min}), ({x_max}, {y_max})",
+                        "Counterfactual Found": counterfactual_found,
+                        "Confidence": confidence,
+                        "SSIM": metrics_masked["SSIM"],
+                        "MSE": metrics_masked["MSE"],
+                        "PSNR": metrics_masked["PSNR"],
+                        "UQI": metrics_masked["UQI"],
+                        "VIFP": metrics_masked["VIFP"]
+                    }
+                    output_summary.append(summary)
 
-# Save a copy of the original labeled CSV file in the masked images directory
-masked_csv_path = os.path.join(masked_image_dir, 'labeled_test_data_log.csv')
-masked_df = df[df['image_filename'].isin(results_df['image_filename'])].copy()
-for i, row in masked_df.iterrows():
-    image_filename = row['image_filename']
-    masked_df.at[i, 'image_filename'] = f'masked_image_{image_filename}'
-masked_df.to_csv(masked_csv_path, index=False)
-print(f"Labeled test data CSV saved to: {masked_csv_path}")
+            # Save the summary to the CSV file
+            for summary in output_summary:
+                writer.writerow(summary)
 
-# Plot summary statistics
-fig, ax = plt.subplots(figsize=(10, 6))
-labels = ['Total Images', 'Images with Detections', 'Images Masked']
-values = [total_images, images_with_detections, images_masked]
-
-ax.bar(labels, values, color=['blue', 'green', 'red'])
-ax.set_ylabel('Number of Images')
-ax.set_title('Summary of Object Detection and Masking Results')
-
-summary_plot_dir = 'plots/object_detection_using_yolov5'
-os.makedirs(summary_plot_dir, exist_ok=True)
-plt.tight_layout()
-plt.savefig(f'{summary_plot_dir}/summary_plot.png')
-plt.show()
+# Process train and test datasets
+process_dataset('dataset/town7_dataset/train/', 'counterfactual_summary_train.csv')
+process_dataset('dataset/town7_dataset/test/', 'counterfactual_summary_test.csv')

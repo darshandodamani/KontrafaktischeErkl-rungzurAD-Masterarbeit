@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 import seaborn as sns
-from PIL import Image
+from PIL import Image, ImageDraw
+from skimage.transform import resize
 from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
 from sewar.full_ref import vifp, uqi
 
@@ -42,8 +43,36 @@ classifier.eval()
 
 # Manually select an image instead of choosing randomly
 test_dir = 'dataset/town7_dataset/train/'
-image_filename = 'town7_000060.png'
+image_filename = 'town7_000967.png'
 image_path = os.path.join(test_dir, image_filename)
+
+# # Select and preprocess the image
+# test_dir = 'dataset/town7_dataset/train/'
+# image_filename = random.choice(os.listdir(test_dir))
+# print(f"Selected Image: {image_filename}")
+# image_path = os.path.join(test_dir, image_filename)
+
+# YOLOv5 Model
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
+
+# Helper function to calculate metrics
+def calculate_metrics(original, reconstructed):
+    # Ensure both images have the same shape
+    original_np = original.cpu().squeeze().permute(1, 2, 0).numpy()
+    reconstructed_np = reconstructed.cpu().squeeze().permute(1, 2, 0).detach().numpy()
+    
+    # Resize reconstructed to match original's dimensions
+    reconstructed_np_resized = resize(reconstructed_np, original_np.shape, anti_aliasing=True)
+
+    metrics = {
+        "SSIM": ssim(original_np, reconstructed_np_resized, channel_axis=-1, data_range=1.0),
+        "MSE": mse(original_np, reconstructed_np_resized),
+        "PSNR": psnr(original_np, reconstructed_np_resized, data_range=1.0),
+        "VIFP": vifp(original_np, reconstructed_np_resized),
+        "UQI": uqi(original_np, reconstructed_np_resized),
+    }
+    return metrics
+
 
 # Load and preprocess the image
 transform = transforms.Compose([
@@ -53,110 +82,146 @@ transform = transforms.Compose([
 image = Image.open(image_path).convert('RGB')
 input_image = transform(image).unsqueeze(0).to(device)
 
-# Step 1: Pass the input image through encoder, decoder, and classifier
+# Step 1: Send the image to encoder, decoder, and classifier
 latent_vector = encoder(input_image)[2]
-reconstructed_input_image = decoder(latent_vector)
-input_image_predicted_label = classifier(latent_vector)
+reconstructed_image = decoder(latent_vector)
+input_predicted_label = classifier(latent_vector)
+predicted_class = "STOP" if torch.argmax(input_predicted_label, dim=1).item() == 0 else "GO"
+print(f"Input Image Predicted Label: {predicted_class}")
 
-# Convert the reconstructed image tensor to a PIL image for plotting
-reconstructed_image_pil = transforms.ToPILImage()(reconstructed_input_image.squeeze(0).cpu())
+# Calculate metrics for reconstructed image
+metrics_initial = calculate_metrics(input_image, reconstructed_image)
+print("Metrics for initial reconstruction:")
+for metric, value in metrics_initial.items():
+    print(f"{metric}: {value}")
 
-# Print the predicted label
-predicted_label = torch.argmax(input_image_predicted_label, dim=1).item()
-predicted_class = "STOP" if predicted_label == 0 else "GO"
-print(f'Input Image Predicted Label: {predicted_class}')
-
-# Step 2: Perform object detection using YOLOv5
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=True, autoshape=True)
-results = model(image)  # Pass the actual PIL image
-
-# Step 3: Counterfactual generation if objects are detected
+# Step 2: YOLOv5 Detection
+results = model(image)
 detections = results.xyxy[0]
-if len(detections) > 0:
-    # Mask the first detected object
+if len(detections) == 0:
+    print("No objects detected in the image. Skipping further steps.")
+    sys.exit()
+
+print(f"Number of objects detected: {len(detections)}")
+classes_detected = [results.names[int(det[5])] for det in detections]
+print(f"Classes detected: {classes_detected}")
+
+for det in detections:
+    print(f"Detected Object: {results.names[int(det[5])]} (Confidence: {det[4]:.2f})")
+
+
+# Visualize detections
+draw = ImageDraw.Draw(image)
+for det in detections:
+    x_min, y_min, x_max, y_max, conf, cls = map(int, det[:6])
+    label = results.names[cls]
+    draw.rectangle([x_min, y_min, x_max, y_max], outline="red", width=2)
+    draw.text((x_min, y_min), label, fill="red")
+image.show()
+
+# Step 3-5: Iterate through detected objects for counterfactual generation
+for obj_index, detection in enumerate(detections):
+    print(f"\nProcessing Object {obj_index + 1}/{len(detections)}...")
+    x_min, y_min, x_max, y_max = map(int, detection[:4])
+
+    # Mask object
     masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
-    detection_to_mask = detections[0]  # Mask one object at a time
-    x_min, y_min, x_max, y_max, _, _ = map(int, detection_to_mask[:6])
-
-    # Ensure bounding box coordinates are within image boundaries
-    x_min = max(0, x_min)
-    y_min = max(0, y_min)
-    x_max = min(masked_image.shape[1], x_max)
-    y_max = min(masked_image.shape[0], y_max)
-
-    # Create a mask by setting pixel values to 0 (black out the detected region)
     masked_image[y_min:y_max, x_min:x_max] = 0
-
-    # Convert masked image back to tensor
     masked_image_tensor = transforms.ToTensor()(masked_image).unsqueeze(0).to(device)
 
-    # Step 4: Pass masked image through encoder to get latent vector and reconstruct
+    # Step 4: Reconstruction and metrics
     masked_latent_vector = encoder(masked_image_tensor)[2]
-    reconstructed_masked_image = decoder(masked_latent_vector).squeeze(0)
-    reconstructed_masked_image_pil = transforms.ToPILImage()(reconstructed_masked_image.cpu())
-    reconstructed_masked_image_pil = reconstructed_masked_image_pil.resize((160, 80))
+    reconstructed_masked_image = decoder(masked_latent_vector)
+    metrics_masked = calculate_metrics(input_image, reconstructed_masked_image)
+    # print(f"Metrics after masking object {obj_index + 1}: {metrics_masked}")
+    print("Metrics for initial reconstruction:")
+    for metric, value in metrics_masked.items():
+        print(f"{metric}: {value}")
 
-    # Step 5: Classifier prediction for the masked reconstructed image
-    masked_image_predicted_label = classifier(masked_latent_vector)
-    predicted_label_after_masking = torch.argmax(masked_image_predicted_label, dim=1).item()
-    predicted_class_after_masking = "STOP" if predicted_label_after_masking == 0 else "GO"
-    print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
+    # Step 5: Counterfactual generation
+    masked_predicted_label = torch.argmax(classifier(masked_latent_vector), dim=1).item()
+    masked_predicted_class = "STOP" if masked_predicted_label == 0 else "GO"
 
-    # Check if counterfactual explanation is generated
-    if predicted_class_after_masking != predicted_class:
-        print(f"Counterfactual Explanation Generated: The label has changed from {predicted_class} to {predicted_class_after_masking}")
-
-        # Calculate image quality metrics between input image and reconstructed masked image
-        reconstructed_masked_image_np = np.array(reconstructed_masked_image_pil, dtype=np.float32) / 255.0
-        original_image_np = np.array(image.resize(reconstructed_masked_image_pil.size), dtype=np.float32) / 255.0
-
-        counterfactual_metrics = {
-            "MSE": mse(original_image_np, reconstructed_masked_image_np),
-            "SSIM": ssim(original_image_np, reconstructed_masked_image_np, win_size=5, channel_axis=-1, data_range=1.0),
-            "PSNR": psnr(original_image_np, reconstructed_masked_image_np, data_range=1.0),
-            "VIF": vifp(original_image_np, reconstructed_masked_image_np),
-            "UQI": uqi(original_image_np, reconstructed_masked_image_np),
-        }
-
-        # Print counterfactual metrics
-        for metric, value in counterfactual_metrics.items():
-            print(f'{metric} for Counterfactual: {value}')
-
-        # Plot metrics comparison
-        metrics = ['MSE', 'SSIM', 'PSNR', 'VIF', 'UQI']
-        values = [counterfactual_metrics[metric] for metric in metrics]
-
-        plt.figure(figsize=(10, 5))
-        sns.barplot(x=metrics, y=values, palette='viridis', hue=metrics, dodge=False, legend=False)
-        plt.title('Comparison of Image Quality Metrics for Counterfactual')
-        plt.ylabel('Metric Value')
-        plt.savefig('plots/object_detection_using_yolov5/metrics_comparison.png')
-    else:
-        print("No Counterfactual Explanation Generated: The label remains the same.")
-
-    # Plot original, masked, and reconstructed images side by side
-    fig, axes = plt.subplots(1, 3, figsize=(25, 10))
-
-    # Original Image
-    original_image = input_image.squeeze().permute(1, 2, 0).cpu().detach().numpy()
-    axes[0].imshow(original_image)
-    axes[0].set_title('Input Image')
-    axes[0].axis('off')
-    image.save('plots/object_detection_using_yolov5/input_image.png')
-
-    # Masked Image
-    axes[1].imshow(masked_image)
-    axes[1].set_title('Masked Image')
-    axes[1].axis('off')
-    plt.imsave('plots/object_detection_using_yolov5/masked_image.png', masked_image)
-
-    # Reconstructed Masked Image
-    axes[2].imshow(reconstructed_masked_image_pil)
-    axes[2].set_title('Reconstructed Masked Image')
-    axes[2].axis('off')
-    reconstructed_masked_image_pil.save('plots/object_detection_using_yolov5/reconstructed_masked_image.png')
-
-    plt.tight_layout()
-    plt.savefig('plots/object_detection_using_yolov5/all_images.png')
+    print(f"Original Label: {predicted_class}, Masked Label: {masked_predicted_class}")
+    if masked_predicted_class != predicted_class:
+        print(f"Counterfactual Explanation Found: Label changed from {predicted_class} to {masked_predicted_class} by masking object {obj_index + 1}.")
+        break
 else:
-    print("No objects detected in the image. Skipping counterfactual generation.")
+    print("No counterfactual explanation generated for any detected object.")
+    
+# Metrics for plotting
+metrics_labels = ["SSIM", "MSE", "PSNR", "VIFP", "UQI"]
+initial_metrics_values = [
+    metrics_initial["SSIM"],
+    metrics_initial["MSE"],
+    metrics_initial["PSNR"],
+    metrics_initial["VIFP"],
+    metrics_initial["UQI"],
+]
+masked_metrics_values = [
+    metrics_masked["SSIM"],
+    metrics_masked["MSE"],
+    metrics_masked["PSNR"],
+    metrics_masked["VIFP"],
+    metrics_masked["UQI"],
+]
+
+# Plot metrics comparison
+plt.figure(figsize=(10, 6))
+plt.plot(metrics_labels, initial_metrics_values, marker="o", label="Initial Reconstruction")
+plt.plot(metrics_labels, masked_metrics_values, marker="o", label="Masked Reconstruction")
+plt.title("Metrics Comparison for Counterfactual Explanation")
+plt.xlabel("Metrics")
+plt.ylabel("Values")
+plt.grid(True, linestyle="--", alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.savefig("plots/object_detection_using_yolov5/metrics_comparison.png")
+plt.show()
+
+# Prepare images for visualization
+# 1. Input image with bounding boxes
+input_with_boxes = image.copy()
+draw = ImageDraw.Draw(input_with_boxes)
+for det in detections:
+    x_min, y_min, x_max, y_max = map(int, det[:4])
+    label = results.names[int(det[5])]
+    draw.rectangle([x_min, y_min, x_max, y_max], outline="red", width=2)
+    draw.text((x_min, y_min), label, fill="red")
+
+# 2. Masked input image
+masked_image_np = masked_image_tensor.squeeze().permute(1, 2, 0).cpu().detach().numpy()
+masked_image_pil = Image.fromarray((masked_image_np * 255).astype(np.uint8))
+
+# 3. Reconstructed masked image
+reconstructed_masked_image_np = reconstructed_masked_image.squeeze().permute(1, 2, 0).cpu().detach().numpy()
+reconstructed_masked_image_pil = Image.fromarray((reconstructed_masked_image_np * 255).astype(np.uint8))
+
+# Resize all images to the same size for consistent plotting
+resize_size = (160, 80)
+input_with_boxes = input_with_boxes.resize(resize_size)
+masked_image_pil = masked_image_pil.resize(resize_size)
+reconstructed_masked_image_pil = reconstructed_masked_image_pil.resize(resize_size)
+
+# Plot images side by side
+fig, axes = plt.subplots(1, 4, figsize=(16, 6))
+
+axes[0].imshow(input_image.squeeze().permute(1, 2, 0).cpu().detach().numpy())
+axes[0].set_title("Input Image")
+axes[0].axis("off")
+
+axes[1].imshow(input_with_boxes)
+axes[1].set_title("Object Detection")
+axes[1].axis("off")
+
+axes[2].imshow(masked_image_pil)
+axes[2].set_title("Masked Image")
+axes[2].axis("off")
+
+axes[3].imshow(reconstructed_masked_image_pil)
+axes[3].set_title("Reconstructed Image")
+axes[3].axis("off")
+
+plt.tight_layout()
+plt.savefig("plots/object_detection_using_yolov5/image_visualization.png")
+
