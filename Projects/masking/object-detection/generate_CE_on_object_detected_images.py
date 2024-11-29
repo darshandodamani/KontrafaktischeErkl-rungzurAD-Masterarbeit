@@ -1,3 +1,4 @@
+# location: Projects/masking/object-detection/generated_CE_on_object_detected_images.py
 import os
 import sys
 import torch
