@@ -143,7 +143,7 @@ def process_dataset(dataset_dir, csv_filename):
     with open(csv_filename, "w", newline="") as csvfile:
         fieldnames = [
             "Image File", "Prediction", "Grid Size & Position", "Grid Position", "Counterfactual Found", 
-            "Confidence", "SSIM", "MSE", "PSNR", "UQI", "VIFP"
+            "Confidence", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -168,6 +168,8 @@ def process_dataset(dataset_dir, csv_filename):
             detections = results.xyxy[0]
             if len(detections) == 0:
                 continue
+
+            classes_detected = [results.names[int(det[5])] for det in detections]
 
             # Step 3-5: Iterate through detected objects for counterfactual generation
             output_summary = []
@@ -201,15 +203,15 @@ def process_dataset(dataset_dir, csv_filename):
 
                     # Save images for visualization
                     plot_and_save_images(
-    input_image, reconstructed_image, masked_image_tensor, reconstructed_masked_image_resized,
-    f"plots/object_detection_using_yolov5/ce_images_{image_filename.split('.')[0]}_{obj_index + 1}_{image_filename}.png"
-)
+                        input_image, reconstructed_image, masked_image_tensor, reconstructed_masked_image_resized,
+                        f"plots/object_detection_using_yolov5/ce_images_{image_filename.split('.')[0]}_{obj_index + 1}.png"
+                    )
 
                     # Save metrics plot
                     plot_and_save_metrics(
-    metrics_original, metrics_masked,
-    f"plots/object_detection_using_yolov5/ce_metrics_{image_filename.split('.')[0]}_{obj_index + 1}_{image_filename}.png"
-)
+                        metrics_original, metrics_masked,
+                        f"plots/object_detection_using_yolov5/ce_metrics_{image_filename.split('.')[0]}_{obj_index + 1}.png"
+                    )
 
                     summary = {
                         "Image File": image_filename,
@@ -222,7 +224,8 @@ def process_dataset(dataset_dir, csv_filename):
                         "MSE": metrics_masked["MSE"],
                         "PSNR": metrics_masked["PSNR"],
                         "UQI": metrics_masked["UQI"],
-                        "VIFP": metrics_masked["VIFP"]
+                        "VIFP": metrics_masked["VIFP"],
+                        "Objects Detected": ', '.join(classes_detected)
                     }
                     output_summary.append(summary)
 
