@@ -1,3 +1,4 @@
+# location: Projects/masking/object-detection/object_detection_based_masking.py
 import os
 import sys
 import torch
@@ -12,6 +13,7 @@ from PIL import Image, ImageDraw
 from skimage.transform import resize
 from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
 from sewar.full_ref import vifp, uqi
+import torchvision.transforms.functional as F
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(
@@ -48,10 +50,10 @@ classifier.eval()
 # image_path = os.path.join(test_dir, image_filename)
 
 # # Select and preprocess the image
-test_dir = 'dataset/town7_dataset/train/'
-image_filename = random.choice(os.listdir(test_dir))
-print(f"Selected Image: {image_filename}")
-image_path = os.path.join(test_dir, image_filename)
+# test_dir = 'dataset/town7_dataset/train/'
+# image_filename = random.choice(os.listdir(test_dir))
+# print(f"Selected Image: {image_filename}")
+# image_path = os.path.join(test_dir, image_filename)
 
 # YOLOv5 Model
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
@@ -72,6 +74,64 @@ def calculate_metrics(original, reconstructed):
     }
     return metrics
 
+# Helper function to plot and save images
+def plot_and_save_images(input_image, reconstructed_image, masked_image_tensor, reconstructed_masked_image_resized, filename):
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+    
+    # Resize reconstructed image to match the original for consistent plotting
+    reconstructed_np = reconstructed_image.cpu().squeeze().permute(1, 2, 0).detach().numpy()
+    original_np_shape = input_image.cpu().squeeze().permute(1, 2, 0).numpy().shape
+    reconstructed_np_resized = resize(reconstructed_np, original_np_shape, anti_aliasing=True)
+
+    # Convert tensors to numpy for plotting
+    original_np = input_image.cpu().squeeze().permute(1, 2, 0).numpy()
+    masked_np = masked_image_tensor.cpu().squeeze().permute(1, 2, 0).numpy()
+    reconstructed_masked_np = reconstructed_masked_image_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy()
+
+    axs[0].imshow(original_np)
+    axs[0].set_title("Original Image")
+    axs[0].axis('off')
+
+    axs[1].imshow(reconstructed_np_resized)
+    axs[1].set_title("Reconstructed Image")
+    axs[1].axis('off')
+
+    axs[2].imshow(masked_np)
+    axs[2].set_title("Masked Image")
+    axs[2].axis('off')
+
+    axs[3].imshow(reconstructed_masked_np)
+    axs[3].set_title("Reconstructed Masked Image")
+    axs[3].axis('off')
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
+# Helper function to plot and save metrics comparison
+def plot_and_save_metrics(metrics_original, metrics_masked, filename):
+    metrics_names = list(metrics_original.keys())
+    original_values = list(metrics_original.values())
+    masked_values = list(metrics_masked.values())
+
+    x = np.arange(len(metrics_names))
+    width = 0.35  # width of the bars
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(x - width/2, original_values, width, label='Original vs Reconstructed')
+    ax.bar(x + width/2, masked_values, width, label='Masked Reconstructed vs Original')
+
+    ax.set_xlabel('Metrics')
+    ax.set_ylabel('Values')
+    ax.set_title('Comparison of Image Metrics')
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics_names)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
 # Load and preprocess the image
 def process_dataset(dataset_dir, csv_filename):
     transform = transforms.Compose([
@@ -90,7 +150,7 @@ def process_dataset(dataset_dir, csv_filename):
 
         # Iterate through all images in the dataset directory
         for image_filename in os.listdir(dataset_dir):
-            if not image_filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            if not image_filename.lower().endswith(('.png')):
                 continue
 
             image_path = os.path.join(dataset_dir, image_filename)
@@ -102,29 +162,18 @@ def process_dataset(dataset_dir, csv_filename):
             reconstructed_image = decoder(latent_vector)
             input_predicted_label = classifier(latent_vector)
             predicted_class = "STOP" if torch.argmax(input_predicted_label, dim=1).item() == 0 else "GO"
-            print(f"Input Image Predicted Label: {predicted_class}")
-
+            
             # Step 2: YOLOv5 Detection
             results = model(image)
             detections = results.xyxy[0]
             if len(detections) == 0:
-                print("No objects detected in the image. Skipping further steps.")
                 continue
-
-            print(f"Number of objects detected: {len(detections)}")
-            classes_detected = [results.names[int(det[5])] for det in detections]
-            print(f"Classes detected: {classes_detected}")
-
-            for det in detections:
-                print(f"Detected Object: {results.names[int(det[5])]} (Confidence: {det[4]:.2f})")
 
             # Step 3-5: Iterate through detected objects for counterfactual generation
             output_summary = []
             for obj_index, detection in enumerate(detections):
-                print(f"\nProcessing Object {obj_index + 1}/{len(detections)}...")
                 x_min, y_min, x_max, y_max = map(int, detection[:4])
                 confidence = detection[4].item()
-                cls_label = results.names[int(detection[5])]
 
                 # Mask object
                 masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
@@ -134,18 +183,34 @@ def process_dataset(dataset_dir, csv_filename):
                 # Step 4: Reconstruction and metrics
                 masked_latent_vector = encoder(masked_image_tensor)[2]
                 reconstructed_masked_image = decoder(masked_latent_vector)
-                metrics_masked = calculate_metrics(input_image, reconstructed_masked_image)
+                reconstructed_masked_image_resized = F.resize(reconstructed_masked_image, [80, 160])
+                
+                # Now re-encode the reconstructed masked image
+                re_encoded_latent_vector = encoder(reconstructed_masked_image_resized)[2]
+                
+                # classify the re-encoded latent masked image
+                re_encoded_predicted_label = torch.argmax(classifier(re_encoded_latent_vector), dim=1).item()
+                re_encoded_predicted_class = "STOP" if re_encoded_predicted_label == 0 else "GO"
 
-                # Step 5: Counterfactual generation
-                masked_predicted_label = torch.argmax(classifier(masked_latent_vector), dim=1).item()
-                masked_predicted_class = "STOP" if masked_predicted_label == 0 else "GO"
-
-                print(f"Original Label: {predicted_class}, Masked Label: {masked_predicted_class}")
-                if masked_predicted_class != predicted_class:
-                    print(f"Counterfactual Explanation Found: Label changed from {predicted_class} to {masked_predicted_class} by masking object {obj_index + 1}.")
+                if re_encoded_predicted_class != predicted_class:
                     counterfactual_found = True
 
                     # Store summary details only if counterfactual explanation is found
+                    metrics_original = calculate_metrics(input_image, reconstructed_image)
+                    metrics_masked = calculate_metrics(input_image, reconstructed_masked_image_resized)
+
+                    # Save images for visualization
+                    plot_and_save_images(
+    input_image, reconstructed_image, masked_image_tensor, reconstructed_masked_image_resized,
+    f"plots/object_detection_using_yolov5/ce_images_{image_filename.split('.')[0]}_{obj_index + 1}_{image_filename}.png"
+)
+
+                    # Save metrics plot
+                    plot_and_save_metrics(
+    metrics_original, metrics_masked,
+    f"plots/object_detection_using_yolov5/ce_metrics_{image_filename.split('.')[0]}_{obj_index + 1}_{image_filename}.png"
+)
+
                     summary = {
                         "Image File": image_filename,
                         "Prediction": predicted_class,
@@ -166,5 +231,5 @@ def process_dataset(dataset_dir, csv_filename):
                 writer.writerow(summary)
 
 # Process train and test datasets
-process_dataset('dataset/town7_dataset/train/', 'counterfactual_summary_train.csv')
-process_dataset('dataset/town7_dataset/test/', 'counterfactual_summary_test.csv')
+process_dataset('dataset/town7_dataset/train/', 'plots/object_detection_using_yolov5/object_detection_counterfactual_summary_train.csv')
+process_dataset('dataset/town7_dataset/test/', 'plots/object_detection_using_yolov5/object_detection_counterfactual_summary_test.csv')
