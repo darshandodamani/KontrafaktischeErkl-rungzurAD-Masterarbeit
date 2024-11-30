@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from lime.lime_tabular import LimeTabularExplainer
 import sys
 import numpy as np
-from median_calculator import compute_dataset_medians
+from Projects.masking.lime.latent_statistics_calculator import compute_dataset_medians
 
 # Add Python path to include the directory where 'encoder.py' is located
 sys.path.append(

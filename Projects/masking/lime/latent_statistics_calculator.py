@@ -172,7 +172,8 @@ def compute_dataset_medians(dataset_paths, encoder, device):
     # Check if latent_vectors is empty
     if not all_latent_vectors:
         logging.warning("No latent vectors were computed. Please check the dataset paths or preprocessing steps.")
-        return None, None
+        # return None, None
+        return np.array([]), {}
 
     # Stack all latent vectors into a numpy array
     # info: all latent vectors into a NumPy array (np.vstack()) and compute the median across all the vectors along the feature dimension (axis=0). This approach helps to get a median value for each feature.
@@ -186,31 +187,46 @@ def compute_dataset_medians(dataset_paths, encoder, device):
     # Compute the median for each feature across the entire dataset
     try:
         median_values = np.median(all_latent_vectors, axis=0)
+        mean_values = np.mean(all_latent_vectors, axis=0)
+        min_values = np.min(all_latent_vectors, axis=0)
+        max_values = np.max(all_latent_vectors, axis=0)
+        std_dev_values = np.std(all_latent_vectors, axis=0)
+        # Log statistics
         logging.info(f"Dataset-wide median values for each latent feature: {median_values}")
+        logging.info(f"Dataset-wide mean values for each latent feature: {mean_values}")
+        logging.info(f"Dataset-wide minimum values for each latent feature: {min_values}")
+        logging.info(f"Dataset-wide maximum values for each latent feature: {max_values}")
+        logging.info(f"Dataset-wide standard deviation for each latent feature: {std_dev_values}")
     except Exception as e:
-        logging.error(f"Error computing median values: {e}")
+        logging.error(f"Error computing dataset statistics: {e}")
         raise
 
     # Save the combined latent vectors and median values to a single CSV file
     try:
-        combined_csv = os.path.join(results_dir, "combined_latent_vectors.csv")
-        median_values_csv = os.path.join(results_dir, "combined_median_values.csv")
+        # Define paths for each statistic CSV file
+        median_values_csv = os.path.join(results_dir, "median_values.csv")
+        mean_values_csv = os.path.join(results_dir, "mean_values.csv")
+        min_values_csv = os.path.join(results_dir, "min_values.csv")
+        max_values_csv = os.path.join(results_dir, "max_values.csv")
+        std_dev_values_csv = os.path.join(results_dir, "std_dev_values.csv")
 
-        df = pd.DataFrame(all_latent_vectors, index=all_image_names)
-        df.to_csv(combined_csv)
-        logging.info(f"Saved combined latent vectors to CSV file: {combined_csv}")
+        # Save each statistic as a separate CSV file
+        pd.DataFrame([median_values], columns=[f"feature_{i}" for i in range(len(median_values))]).to_csv(median_values_csv, index=False)
+        pd.DataFrame([mean_values], columns=[f"feature_{i}" for i in range(len(mean_values))]).to_csv(mean_values_csv, index=False)
+        pd.DataFrame([min_values], columns=[f"feature_{i}" for i in range(len(min_values))]).to_csv(min_values_csv, index=False)
+        pd.DataFrame([max_values], columns=[f"feature_{i}" for i in range(len(max_values))]).to_csv(max_values_csv, index=False)
+        pd.DataFrame([std_dev_values], columns=[f"feature_{i}" for i in range(len(std_dev_values))]).to_csv(std_dev_values_csv, index=False)
 
-        median_df = pd.DataFrame([median_values], columns=[f"feature_{i}" for i in range(len(median_values))])
-        median_df.to_csv(median_values_csv, index=False)
-        logging.info(f"Saved combined median values to CSV file: {median_values_csv}")
+        # Log success
+        logging.info(f"Saved median values to CSV file: {median_values_csv}")
+        logging.info(f"Saved mean values to CSV file: {mean_values_csv}")
+        logging.info(f"Saved minimum values to CSV file: {min_values_csv}")
+        logging.info(f"Saved maximum values to CSV file: {max_values_csv}")
+        logging.info(f"Saved standard deviation values to CSV file: {std_dev_values_csv}")
     except Exception as e:
-        logging.error(f"Error saving combined latent vectors or median values to CSV: {e}")
+        logging.error(f"Error saving statistics to CSV files: {e}")
         raise
-    
-    # Store individual latent vectors in a dictionary
-    latent_vectors_dict = {name: vector for name, vector in zip(all_image_names, all_latent_vectors)}
 
-    return median_values, latent_vectors_dict
 
 # Example usage
 if __name__ == "__main__":
