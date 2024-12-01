@@ -32,8 +32,19 @@ classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
 
 # Load median values computed earlier
 median_values_csv = "latent_vectors/combined_median_values.csv"
-median_df = pd.read_csv(median_values_csv)
-median_values = median_df.values.flatten()  # Flatten to get a list of median values for each feature
+# median_df = pd.read_csv(median_values_csv)
+# median_values = median_df.values.flatten()  # Flatten to get a list of median values for each feature
+
+# Load mean, min, max, and median values computed earlier
+mean_values_csv = "latent_vectors/mean_values.csv"
+min_values_csv = "latent_vectors/min_values.csv"
+max_values_csv = "latent_vectors/max_values.csv"
+
+
+mean_values = pd.read_csv(mean_values_csv).values.flatten()
+min_values = pd.read_csv(min_values_csv).values.flatten()
+max_values = pd.read_csv(max_values_csv).values.flatten()
+median_values = pd.read_csv(median_values_csv).values.flatten()
 
 # Load the models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -138,93 +149,105 @@ positive_importance_list = sorted(
     [(feature, weight) for feature, weight in explanation.as_list() if weight > 0],
     key=lambda x: abs(x[1]), reverse=True
 )
-#loop to 
-percentage_value = 0
-step_size = 0.01
 
-#state the loops with the percentage value and do the iteration util it find the couterfactul explanation
-while(percentage_value < 1):
-    percentage_value += step_size
+# Define masking strategies
+masking_strategies = {
+    "median": median_values,
+    "mean": mean_values,
+    "min": min_values,
+    "max": max_values
+}
 
-    # Calculate how many features to select based on the top percentage
-    num_features_to_select = int(len(positive_importance_list) * percentage_value)  # Adjust the percentage as needed
+# Iterate through masking strategies
+for strategy_name, masking_values in masking_strategies.items():
+    print(f"\nApplying {strategy_name.capitalize()}-Based Masking...")
+    #loop to 
+    percentage_value = 0
+    step_size = 0.01
 
-    # Print important features being masked
-    important_features = [int(feature.split("_")[-1]) for feature, _ in positive_importance_list[:num_features_to_select]]
-    print("{:<15} {:<20} {:<20}".format('Feature Index', 'Original Value', 'Median Value'))
-    print("{:<15} {:<20} {:<20}".format('-' * 15, '-' * 20, '-' * 20))
+    #state the loops with the percentage value and do the iteration util it find the couterfactul explanation
+    while(percentage_value < 1):
+        percentage_value += step_size
 
-    # Apply median masking based on LIME's important features
-    masked_latent_vector = latent_vector_np.flatten()
-    for feature_index in important_features:
-        original_value = masked_latent_vector[feature_index]
-        median_value = median_values[feature_index]
-        print("{:<15} {:<20} {:<20}".format(feature_index, original_value, median_value))
-        masked_latent_vector[feature_index] = median_value
+        # Calculate how many features to select based on the top percentage
+        num_features_to_select = int(len(positive_importance_list) * percentage_value)  # Adjust the percentage as needed
 
-    # Convert masked latent vector back to tensor
-    masked_latent_tensor = torch.tensor(masked_latent_vector, dtype=torch.float32).to(device).reshape(1, -1)
+        # Print important features being masked
+        important_features = [int(feature.split("_")[-1]) for feature, _ in positive_importance_list[:num_features_to_select]]
+        print("{:<15} {:<20} {:<20}".format('Feature Index', 'Original Value', 'Median Value'))
+        print("{:<15} {:<20} {:<20}".format('-' * 15, '-' * 20, '-' * 20))
 
-    # Reconstruct the image using the masked latent vector
-    reconstructed_image_after_masking = decoder(masked_latent_tensor).squeeze(0)
-    reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking)
+        # Apply median masking based on LIME's important features
+        masked_latent_vector = latent_vector_np.flatten()
+        for feature_index in important_features:
+            original_value = masked_latent_vector[feature_index]
+            median_value = median_values[feature_index]
+            print("{:<15} {:<20} {:<20}".format(feature_index, original_value, median_value))
+            masked_latent_vector[feature_index] = median_value
 
-    # Counterfactual analysis
-    reconstructed_image_after_masking_tensor = transform(reconstructed_image_after_masking_pil).unsqueeze(0).to(device)
-    masked_latent_vector_cf = encoder(reconstructed_image_after_masking_tensor)[2]
-    masked_image_predicted_label = classifier(masked_latent_vector_cf)
-    predicted_label_after_masking = torch.argmax(masked_image_predicted_label, dim=1).item()
-    predicted_class_after_masking = "STOP" if predicted_label_after_masking == 0 else "GO"
-    print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
+        # Convert masked latent vector back to tensor
+        masked_latent_tensor = torch.tensor(masked_latent_vector, dtype=torch.float32).to(device).reshape(1, -1)
 
+        # Reconstruct the image using the masked latent vector
+        reconstructed_image_after_masking = decoder(masked_latent_tensor).squeeze(0)
+        reconstructed_image_after_masking_pil = transforms.ToPILImage()(reconstructed_image_after_masking)
+
+        # Counterfactual analysis
+        reconstructed_image_after_masking_tensor = transform(reconstructed_image_after_masking_pil).unsqueeze(0).to(device)
+        masked_latent_vector_cf = encoder(reconstructed_image_after_masking_tensor)[2]
+        masked_image_predicted_label = classifier(masked_latent_vector_cf)
+        predicted_label_after_masking = torch.argmax(masked_image_predicted_label, dim=1).item()
+        predicted_class_after_masking = "STOP" if predicted_label_after_masking == 0 else "GO"
+        print(f'Reconstructed Image after Masking Predicted Label: {predicted_class_after_masking}')
+
+        if predicted_class_after_masking != predicted_class:
+            break
+            
+    # Print the percentage value
+    print(f"Percentage Value: {percentage_value}")
+    print("*******")
+
+    # Check if counterfactual explanation is generated
     if predicted_class_after_masking != predicted_class:
-        break
-        
-# Print the percentage value
-print(f"Percentage Value: {percentage_value}")
-print("*******")
+        print(f"Counterfactual Explanation Generated: The label has changed from {predicted_class} to {predicted_class_after_masking}")
 
-# Check if counterfactual explanation is generated
-if predicted_class_after_masking != predicted_class:
-    print(f"Counterfactual Explanation Generated: The label has changed from {predicted_class} to {predicted_class_after_masking}")
+        # Metrics for counterfactual explanation
+        reconstructed_image_after_masking_np = np.array(reconstructed_image_after_masking_pil, dtype=np.float32) / 255.0
+        counterfactual_metrics = {
+            "MSE": mse(input_image_resized, reconstructed_image_after_masking_np),
+            "SSIM": ssim(input_image_resized, reconstructed_image_after_masking_np, win_size=5, channel_axis=-1, data_range=1.0),
+            "PSNR": psnr(input_image_resized, reconstructed_image_after_masking_np, data_range=1.0),
+            "VIF": vifp(input_image_resized, reconstructed_image_after_masking_np),
+            "UQI": uqi(input_image_resized, reconstructed_image_after_masking_np),
+        }
 
-    # Metrics for counterfactual explanation
-    reconstructed_image_after_masking_np = np.array(reconstructed_image_after_masking_pil, dtype=np.float32) / 255.0
-    counterfactual_metrics = {
-        "MSE": mse(input_image_resized, reconstructed_image_after_masking_np),
-        "SSIM": ssim(input_image_resized, reconstructed_image_after_masking_np, win_size=5, channel_axis=-1, data_range=1.0),
-        "PSNR": psnr(input_image_resized, reconstructed_image_after_masking_np, data_range=1.0),
-        "VIF": vifp(input_image_resized, reconstructed_image_after_masking_np),
-        "UQI": uqi(input_image_resized, reconstructed_image_after_masking_np),
-    }
+        # Print metrics for counterfactual explanation
+        for metric, value in counterfactual_metrics.items():
+            print(f'{metric} for Counterfactual: {value}')
 
-    # Print metrics for counterfactual explanation
-    for metric, value in counterfactual_metrics.items():
-        print(f'{metric} for Counterfactual: {value}')
+        # Bar chart for metric comparison between original and counterfactual
+        original_values = list(metrics.values())
+        counterfactual_values = list(counterfactual_metrics.values())
 
-    # Bar chart for metric comparison between original and counterfactual
-    original_values = list(metrics.values())
-    counterfactual_values = list(counterfactual_metrics.values())
+        x = np.arange(len(metrics))
+        width = 0.35
 
-    x = np.arange(len(metrics))
-    width = 0.35
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.bar(x - width / 2, original_values, width, label='Original', color='blue')
+        ax.bar(x + width / 2, counterfactual_values, width, label='Counterfactual', color='orange')
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(x - width / 2, original_values, width, label='Original', color='blue')
-    ax.bar(x + width / 2, counterfactual_values, width, label='Counterfactual', color='orange')
+        ax.set_xlabel('Metrics', fontsize=14)
+        ax.set_ylabel('Values', fontsize=14)
+        ax.set_title('Comparison of Image Quality Metrics: Original vs Counterfactual', fontsize=16, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(metrics.keys())
+        ax.legend()
 
-    ax.set_xlabel('Metrics', fontsize=14)
-    ax.set_ylabel('Values', fontsize=14)
-    ax.set_title('Comparison of Image Quality Metrics: Original vs Counterfactual', fontsize=16, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(metrics.keys())
-    ax.legend()
-
-    plt.tight_layout()
-    plt.savefig('plots/lime_plots/metrics_comparison_original_vs_counterfactual.png')
-    print(f"Conclusion: The masked features significantly impacted the classification outcome, changing the label from {predicted_class} to {predicted_class_after_masking}. This indicates that these features {important_features} play a crucial role in the model's decision-making process, providing valuable insight into the model's behavior.")
-else:
-    print("No Counterfactual Explanation Generated: The label remains the same.")
+        plt.tight_layout()
+        plt.savefig('plots/lime_plots/metrics_comparison_original_vs_counterfactual.png')
+        print(f"Conclusion: The masked features significantly impacted the classification outcome, changing the label from {predicted_class} to {predicted_class_after_masking}. This indicates that these features {important_features} play a crucial role in the model's decision-making process, providing valuable insight into the model's behavior.")
+    else:
+        print("No Counterfactual Explanation Generated: The label remains the same.")
 
 
 # Plot original, reconstructed, and counterfactual images together with the same size
