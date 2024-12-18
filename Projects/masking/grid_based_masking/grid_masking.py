@@ -1,3 +1,4 @@
+#location: Projects/masking/grid_based_masking/grid_masking.py
 import csv
 import os
 import sys
