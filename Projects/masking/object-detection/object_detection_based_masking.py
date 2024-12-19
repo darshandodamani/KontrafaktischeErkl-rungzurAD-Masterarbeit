@@ -1,6 +1,7 @@
 # location: Projects/masking/object-detection/object_detection_based_masking.py
 import os
 import sys
+from tracemalloc import start
 import torch
 import random
 import numpy as np
@@ -9,6 +10,7 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 import seaborn as sns
 import csv
+import time
 from PIL import Image, ImageDraw
 from skimage.transform import resize
 from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
@@ -139,11 +141,12 @@ def process_dataset(dataset_dir, csv_filename):
         transforms.ToTensor(),
     ])
 
+    total_start_time = time.time()  # Start time for the entire dataset processing
     # Prepare CSV file to save the summary
     with open(csv_filename, "w", newline="") as csvfile:
         fieldnames = [
             "Image File", "Prediction", "Grid Size & Position", "Grid Position", "Counterfactual Found", 
-            "Confidence", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected"
+            "Confidence", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Processing Time (s)"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -157,6 +160,8 @@ def process_dataset(dataset_dir, csv_filename):
             image = Image.open(image_path).convert('RGB')
             input_image = transform(image).unsqueeze(0).to(device)
 
+            image_start_time = time.time()  # Start time for this image
+
             # Step 1: Send the image to encoder, decoder, and classifier
             latent_vector = encoder(input_image)[2]
             reconstructed_image = decoder(latent_vector)
@@ -166,72 +171,75 @@ def process_dataset(dataset_dir, csv_filename):
             # Step 2: YOLOv5 Detection
             results = model(image)
             detections = results.xyxy[0]
-            if len(detections) == 0:
-                continue
+            classes_detected = [results.names[int(det[5])] for det in detections] if len(detections) > 0 else []
+            counterfactual_found = False
 
-            classes_detected = [results.names[int(det[5])] for det in detections]
+            # Default metrics values
+            metrics_masked = {"SSIM": None, "MSE": None, "PSNR": None, "UQI": None, "VIFP": None}
+            confidence = None
+            grid_size_position = None
+            grid_position = None
 
-            # Step 3-5: Iterate through detected objects for counterfactual generation
-            output_summary = []
-            for obj_index, detection in enumerate(detections):
-                x_min, y_min, x_max, y_max = map(int, detection[:4])
-                confidence = detection[4].item()
+            if len(detections) > 0:
+                for obj_index, detection in enumerate(detections):
+                    x_min, y_min, x_max, y_max = map(int, detection[:4])
+                    confidence = detection[4].item()
+                    grid_size_position = f"({x_min}, {y_min}), ({x_max}, {y_max})"
+                    grid_position = grid_size_position
 
-                # Mask object
-                masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
-                masked_image[y_min:y_max, x_min:x_max] = 0
-                masked_image_tensor = transforms.ToTensor()(masked_image).unsqueeze(0).to(device)
+                    # Mask object
+                    masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
+                    masked_image[y_min:y_max, x_min:x_max] = 0
+                    masked_image_tensor = transforms.ToTensor()(masked_image).unsqueeze(0).to(device)
 
-                # Step 4: Reconstruction and metrics
-                masked_latent_vector = encoder(masked_image_tensor)[2]
-                reconstructed_masked_image = decoder(masked_latent_vector)
-                reconstructed_masked_image_resized = F.resize(reconstructed_masked_image, [80, 160])
-                
-                # Now re-encode the reconstructed masked image
-                re_encoded_latent_vector = encoder(reconstructed_masked_image_resized)[2]
-                
-                # classify the re-encoded latent masked image
-                re_encoded_predicted_label = torch.argmax(classifier(re_encoded_latent_vector), dim=1).item()
-                re_encoded_predicted_class = "STOP" if re_encoded_predicted_label == 0 else "GO"
+                    # Step 4: Reconstruction and metrics
+                    masked_latent_vector = encoder(masked_image_tensor)[2]
+                    reconstructed_masked_image = decoder(masked_latent_vector)
+                    reconstructed_masked_image_resized = F.resize(reconstructed_masked_image, [80, 160])
 
-                if re_encoded_predicted_class != predicted_class:
-                    counterfactual_found = True
+                    # Re-encode and classify the reconstructed masked image
+                    re_encoded_latent_vector = encoder(reconstructed_masked_image_resized)[2]
+                    re_encoded_predicted_label = torch.argmax(classifier(re_encoded_latent_vector), dim=1).item()
+                    re_encoded_predicted_class = "STOP" if re_encoded_predicted_label == 0 else "GO"
 
-                    # Store summary details only if counterfactual explanation is found
-                    metrics_original = calculate_metrics(input_image, reconstructed_image)
-                    metrics_masked = calculate_metrics(input_image, reconstructed_masked_image_resized)
+                    if re_encoded_predicted_class != predicted_class:
+                        counterfactual_found = True
+                        metrics_masked = calculate_metrics(input_image, reconstructed_masked_image_resized)
 
-                    # Save images for visualization
-                    plot_and_save_images(
-                        input_image, reconstructed_image, masked_image_tensor, reconstructed_masked_image_resized,
-                        f"plots/object_detection_using_yolov5/ce_images_{image_filename.split('.')[0]}_{obj_index + 1}.png"
-                    )
+                        # Save images and metrics plot only for counterfactual explanations
+                        plot_and_save_images(
+                            input_image, reconstructed_image, masked_image_tensor, reconstructed_masked_image_resized,
+                            f"plots/object_detection_using_yolov5/ce_images_{image_filename.split('.')[0]}_{obj_index + 1}.png"
+                        )
+                        plot_and_save_metrics(
+                            calculate_metrics(input_image, reconstructed_image), metrics_masked,
+                            f"plots/object_detection_using_yolov5/ce_metrics_{image_filename.split('.')[0]}_{obj_index + 1}.png"
+                        )
 
-                    # Save metrics plot
-                    plot_and_save_metrics(
-                        metrics_original, metrics_masked,
-                        f"plots/object_detection_using_yolov5/ce_metrics_{image_filename.split('.')[0]}_{obj_index + 1}.png"
-                    )
+            # Calculate processing time for the image
+            processing_time = time.time() - image_start_time
 
-                    summary = {
-                        "Image File": image_filename,
-                        "Prediction": predicted_class,
-                        "Grid Size & Position": f"({x_min}, {y_min}), ({x_max}, {y_max})",
-                        "Grid Position": f"({x_min}, {y_min}), ({x_max}, {y_max})",
-                        "Counterfactual Found": counterfactual_found,
-                        "Confidence": confidence,
-                        "SSIM": metrics_masked["SSIM"],
-                        "MSE": metrics_masked["MSE"],
-                        "PSNR": metrics_masked["PSNR"],
-                        "UQI": metrics_masked["UQI"],
-                        "VIFP": metrics_masked["VIFP"],
-                        "Objects Detected": ', '.join(classes_detected)
-                    }
-                    output_summary.append(summary)
+            # Write the summary to the CSV file
+            writer.writerow({
+                "Image File": image_filename,
+                "Prediction": predicted_class,
+                "Grid Size & Position": grid_size_position,
+                "Grid Position": grid_position,
+                "Counterfactual Found": counterfactual_found,
+                "Confidence": confidence,
+                "SSIM": metrics_masked["SSIM"],
+                "MSE": metrics_masked["MSE"],
+                "PSNR": metrics_masked["PSNR"],
+                "UQI": metrics_masked["UQI"],
+                "VIFP": metrics_masked["VIFP"],
+                "Objects Detected": ', '.join(classes_detected),
+                "Processing Time (s)": f"{processing_time:.2f}"
+            })
 
-            # Save the summary to the CSV file
-            for summary in output_summary:
-                writer.writerow(summary)
+    total_end_time = time.time()  # End time for the entire dataset processing
+    print(f"Total time taken to process {dataset_dir}: {total_end_time - total_start_time:.2f} seconds")
+
+    
 
 # Process train and test datasets
 process_dataset('dataset/town7_dataset/train/', 'plots/object_detection_using_yolov5/object_detection_counterfactual_summary_train.csv')
