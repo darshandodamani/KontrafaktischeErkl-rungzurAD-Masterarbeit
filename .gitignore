@@ -31,3 +31,6 @@ settings.json
 
 # Igonew latent_space folder
 latent_vectors/
+
+# Ignore plots/object_detection_using_yolov5/results_plots folder
+plots/object_detection_using_yolov5/results_plots/
