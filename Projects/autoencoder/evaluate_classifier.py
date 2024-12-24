@@ -14,6 +14,7 @@ from classifier import ClassifierModel  # Import the classifier model
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import classification_report
 
 # Check if GPU is available, otherwise use CPU
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -39,7 +40,7 @@ classifier = ClassifierModel(input_size=128, hidden_size=128, output_size=2).to(
 # Load the classifier state dictionary
 classifier.load_state_dict(
     torch.load(
-        "model/epochs_500_latent_128_town_7/classifier_final.pth",
+        "model/epochs_500_latent_128_town_7/classifier_final_4_classes.pth",
         map_location=device,
         weights_only=True,
     )
@@ -95,15 +96,18 @@ sns.heatmap(
     annot=True,
     fmt="d",
     cmap="Blues",
-    xticklabels=["STOP", "GO"],
-    yticklabels=["STOP", "GO"],
+    # xticklabels=["STOP", "GO"],
+    # yticklabels=["STOP", "GO"],
+    xticklabels=["STOP", "GO", "RIGHT", "LEFT"],
+    yticklabels=["STOP", "GO", "RIGHT", "LEFT"],
 )
 plt.xlabel("Predicted")
 plt.ylabel("True")
 plt.title("Confusion Matrix")
-plt.savefig(
-    f"plots/classifier_plots/confusion_matrix_for_{NUM_EPOCHS}_epochs_{LATENT_SPACE}_LF.png"
-)  # Save the plot dynamically
+# plt.savefig(
+#     f"plots/classifier_plots/confusion_matrix_for_{NUM_EPOCHS}_epochs_{LATENT_SPACE}_LF.png"
+# )  # Save the plot dynamically for two classes
+plt.savefig(f"plots/classifier_plots/confusion_matrix_for_4_classes.png") #updated this for 4 classes
 print(f"Confusion matrix for {NUM_EPOCHS} epochs {LATENT_SPACE} LF saved successfully!")
 plt.close()
 
@@ -133,7 +137,7 @@ plt.ylabel("True Positive Rate")
 plt.title("Receiver Operating Characteristic (ROC)")
 plt.legend(loc="lower right")
 plt.savefig(
-    f"plots/classifier_plots/roc_curve_for_{NUM_EPOCHS}_epochs_{LATENT_SPACE}_LF.png"
+    f"plots/classifier_plots/roc_curve_for_{NUM_EPOCHS}_epochs_{LATENT_SPACE}_LF_4_classes.png"
 )
 plt.close()
 
@@ -147,3 +151,6 @@ print(f"Precision: {precision:.4f}")
 print(f"Recall: {recall:.4f}")
 print(f"F1 Score: {f1_score:.4f}")
 print(f"ROC AUC: {roc_auc:.4f}")
+
+report = classification_report(all_labels, all_preds, target_names=["STOP", "GO", "RIGHT", "LEFT"])
+print(report)
