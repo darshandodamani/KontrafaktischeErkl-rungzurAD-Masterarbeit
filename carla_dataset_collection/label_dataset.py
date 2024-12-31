@@ -5,13 +5,11 @@ import os
 import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.INFO)
+logging.info(f"Current working directory: {os.getcwd()}")
 
-def label_dataset(data_path, stop_quantile=0.9, go_quantile=0.1, turn_quantile=0.9, 
-                  stop_threshold=0.1, go_threshold=0.5, turn_threshold=0.1, 
-                  threshold_method='quantile', balance_method='oversample', 
-                  plot_output_path='../plots/dataset_for_4_classes'):
-    input_csv = os.path.join(data_path, "test_data_log.csv")
-    output_csv = os.path.join(data_path, "labeled_4_classes_data_log.csv")
+def label_dataset(input_csv, output_csv, stop_quantile=0.9, go_quantile=0.1, turn_quantile=0.9,
+                  stop_threshold=0.1, go_threshold=0.5, turn_threshold=0.1,
+                  threshold_method='quantile', plot_path=None):
     df = pd.read_csv(input_csv)
 
     # Determine thresholds based on the chosen method
@@ -26,24 +24,19 @@ def label_dataset(data_path, stop_quantile=0.9, go_quantile=0.1, turn_quantile=0
         logging.error("Unknown threshold method. Use 'fixed' or 'quantile'.")
         return
 
-    # Labeling logic for 4 classes
+    # Labeling logic for 4 classes (no SKIP)
     def label_row(row):
-        if row['brake'] > stop_threshold:  # STOP
+        if row['brake'] > stop_threshold:  # STOP has the highest priority
             return 'STOP'
-        elif row['throttle'] > go_threshold:  # GO
-            return 'GO'
-        elif row['steering'] > turn_threshold:  # RIGHT
+        elif row['steering'] > turn_threshold and row['throttle'] > 0.1:  # RIGHT
             return 'RIGHT'
-        elif row['steering'] < -turn_threshold:  # LEFT
+        elif row['steering'] < -turn_threshold and row['throttle'] > 0.1:  # LEFT
             return 'LEFT'
-        else:
-            return 'SKIP'
+        else:  # Default to GO
+            return 'GO'
 
     # Apply labeling logic
     df['label'] = df.apply(label_row, axis=1)
-
-    # Filter out skipped records
-    df = df[df['label'] != 'SKIP']
 
     # Update counts
     stop_count = df[df['label'] == 'STOP'].shape[0]
@@ -53,63 +46,56 @@ def label_dataset(data_path, stop_quantile=0.9, go_quantile=0.1, turn_quantile=0
 
     logging.info(f"Initial counts - STOP: {stop_count}, GO: {go_count}, RIGHT: {right_count}, LEFT: {left_count}")
 
-    # Balance the dataset
-    stop_df = df[df['label'] == 'STOP']
-    go_df = df[df['label'] == 'GO']
-    right_df = df[df['label'] == 'RIGHT']
-    left_df = df[df['label'] == 'LEFT']
+    # Total dataset size
+    total_size = len(df)
+    stop_ratio, go_ratio, right_ratio, left_ratio = 0.35, 0.35, 0.15, 0.15
+    target_stop = int(total_size * stop_ratio)
+    target_go = int(total_size * go_ratio)
+    target_right = int(total_size * right_ratio)
+    target_left = int(total_size * left_ratio)
 
-    if balance_method == 'oversample':
-        max_count = max(stop_count, go_count, right_count, left_count)
-        stop_df = stop_df.sample(max_count, replace=True, random_state=42) if len(stop_df) > 0 else pd.DataFrame()
-        go_df = go_df.sample(max_count, replace=True, random_state=42) if len(go_df) > 0 else pd.DataFrame()
-        right_df = right_df.sample(max_count, replace=True, random_state=42) if len(right_df) > 0 else pd.DataFrame()
-        left_df = left_df.sample(max_count, replace=True, random_state=42) if len(left_df) > 0 else pd.DataFrame()
-    elif balance_method == 'undersample':
-        min_count = min(stop_count, go_count, right_count, left_count)
-        stop_df = stop_df.sample(min_count, random_state=42)
-        go_df = go_df.sample(min_count, random_state=42)
-        right_df = right_df.sample(min_count, random_state=42)
-        left_df = left_df.sample(min_count, random_state=42)
+    logging.info(f"Target count per class - STOP: {target_stop}, GO: {target_go}, RIGHT: {target_right}, LEFT: {target_left}")
+
+    # Proportional sampling
+    stop_df = df[df['label'] == 'STOP'].sample(n=min(target_stop, stop_count), random_state=42)
+    go_df = df[df['label'] == 'GO'].sample(n=min(target_go, go_count), random_state=42)
+    right_df = df[df['label'] == 'RIGHT'].sample(n=target_right, replace=True, random_state=42) if len(df[df['label'] == 'RIGHT']) < target_right else df[df['label'] == 'RIGHT'].sample(n=target_right, random_state=42)
+    left_df = df[df['label'] == 'LEFT'].sample(n=target_left, replace=True, random_state=42) if len(df[df['label'] == 'LEFT']) < target_left else df[df['label'] == 'LEFT'].sample(n=target_left, random_state=42)
 
     # Combine balanced data
     balanced_df = pd.concat([stop_df, go_df, right_df, left_df]).sample(frac=1, random_state=42).reset_index(drop=True)
+
+    # Save the balanced dataset
     balanced_df.to_csv(output_csv, index=False)
 
     # Final counts
-    logging.info(f"Balanced counts - STOP: {len(stop_df)}, GO: {len(go_df)}, RIGHT: {len(right_df)}, LEFT: {len(left_df)}")
+    final_stop_count = balanced_df[balanced_df['label'] == 'STOP'].shape[0]
+    final_go_count = balanced_df[balanced_df['label'] == 'GO'].shape[0]
+    final_right_count = balanced_df[balanced_df['label'] == 'RIGHT'].shape[0]
+    final_left_count = balanced_df[balanced_df['label'] == 'LEFT'].shape[0]
+
+    logging.info(f"Final counts - STOP: {final_stop_count}, GO: {final_go_count}, RIGHT: {final_right_count}, LEFT: {final_left_count}")
     logging.info(f"Labeled dataset saved to {output_csv}")
 
     # Plot distributions
-    os.makedirs(plot_output_path, exist_ok=True)
-
-    # Brake, throttle, and steering distribution
-    plt.figure(figsize=(10, 5))
-    plt.hist(df['brake'], bins=50, alpha=0.5, label='Brake', color='red')
-    plt.hist(df['throttle'], bins=50, alpha=0.5, label='Throttle', color='green')
-    plt.hist(df['steering'], bins=50, alpha=0.5, label='Steering', color='blue')
-    plt.xlabel('Value')
-    plt.ylabel('Frequency')
-    plt.title('Distributions of Brake, Throttle, and Steering')
-    plt.legend()
-    plt.savefig(os.path.join(plot_output_path, 'brake_throttle_steering_distribution.png'))
-    plt.close()
-
-    # Label distribution
-    plt.figure(figsize=(8, 5))
-    plt.pie(
-        [len(stop_df), len(go_df), len(right_df), len(left_df)],
-        labels=['STOP', 'GO', 'RIGHT', 'LEFT'],
-        colors=['red', 'green', 'blue', 'yellow'],
-        autopct='%1.1f%%'
-    )
-    plt.title('Label Distribution')
-    plt.savefig(os.path.join(plot_output_path, 'label_distribution.png'))
-    plt.close()
+    if plot_path:
+        os.makedirs(os.path.dirname(plot_path), exist_ok=True)
+        plt.figure(figsize=(8, 5))
+        plt.pie(
+            [final_stop_count, final_go_count, final_right_count, final_left_count],
+            labels=['STOP', 'GO', 'RIGHT', 'LEFT'],
+            colors=['red', 'green', 'blue', 'yellow'],
+            autopct='%1.1f%%'
+        )
+        plt.title(f'Label Distribution: {os.path.basename(output_csv)}')
+        plt.savefig(plot_path)
+        logging.info(f"Plot saved to {plot_path}")
+        plt.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Dataset Labeling Script for 4 Classes")
-    parser.add_argument("--data_path", type=str, required=True, help="Path to the dataset.")
+    parser = argparse.ArgumentParser(description="Dataset Labeling Script for Train and Test Datasets")
+    parser.add_argument("--train_data_path", type=str, required=True, help="Path to the train dataset.")
+    parser.add_argument("--test_data_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--threshold_method", type=str, choices=['fixed', 'quantile'], default='quantile', help="Method to determine thresholds.")
     parser.add_argument("--stop_quantile", type=float, default=0.9, help="Quantile for STOP threshold (quantile method).")
     parser.add_argument("--go_quantile", type=float, default=0.1, help="Quantile for GO threshold (quantile method).")
@@ -117,12 +103,13 @@ if __name__ == "__main__":
     parser.add_argument("--stop_threshold", type=float, default=0.1, help="Fixed STOP threshold (fixed method).")
     parser.add_argument("--go_threshold", type=float, default=0.5, help="Fixed GO threshold (fixed method).")
     parser.add_argument("--turn_threshold", type=float, default=0.1, help="Fixed TURN threshold (fixed method).")
-    parser.add_argument("--balance_method", type=str, choices=['oversample', 'undersample'], default='oversample', help="Balancing method for labels.")
-    parser.add_argument("--plot_output_path", type=str, default='../plots/dataset_for_4_classes', help="Path to save plots.")
+    parser.add_argument("--plot_output_path", type=str, default='./plots/dataset_images_for_4_classes', help="Base path to save plots.")
     args = parser.parse_args()
 
+    # Train dataset processing
     label_dataset(
-        data_path=args.data_path,
+        input_csv=os.path.join(args.train_data_path, "train_data_log.csv"),
+        output_csv=os.path.join(args.train_data_path, "labeled_train_4_class_data_log.csv"),
         stop_quantile=args.stop_quantile,
         go_quantile=args.go_quantile,
         turn_quantile=args.turn_quantile,
@@ -130,6 +117,19 @@ if __name__ == "__main__":
         go_threshold=args.go_threshold,
         turn_threshold=args.turn_threshold,
         threshold_method=args.threshold_method,
-        balance_method=args.balance_method,
-        plot_output_path=args.plot_output_path
+        plot_path=os.path.join(args.plot_output_path, "train_label_distribution.png")
+    )
+
+    # Test dataset processing
+    label_dataset(
+        input_csv=os.path.join(args.test_data_path, "test_data_log.csv"),
+        output_csv=os.path.join(args.test_data_path, "labeled_test_4_class_data_log.csv"),
+        stop_quantile=args.stop_quantile,
+        go_quantile=args.go_quantile,
+        turn_quantile=args.turn_quantile,
+        stop_threshold=args.stop_threshold,
+        go_threshold=args.go_threshold,
+        turn_threshold=args.turn_threshold,
+        threshold_method=args.threshold_method,
+        plot_path=os.path.join(args.plot_output_path, "test_label_distribution.png")
     )
