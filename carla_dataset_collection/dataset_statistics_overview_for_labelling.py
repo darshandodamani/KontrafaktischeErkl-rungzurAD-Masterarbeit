@@ -65,7 +65,12 @@ def process_and_resample(data_file, output_dir, thresholds):
 
     # Save the processed and balanced dataset
     os.makedirs(output_dir, exist_ok=True)
-    processed_file = os.path.join(output_dir, "processed_balanced_data.csv")
+    if "train" in data_file:
+        processed_file = os.path.join("dataset/town7_dataset/train", "labeled_train_4_class_data_log.csv")
+    elif "test" in data_file:
+        processed_file = os.path.join("dataset/town7_dataset/test", "labeled_test_4_class_data_log.csv")
+    else:
+        processed_file = os.path.join(output_dir, "processed_balanced_data.csv")
     balanced_df.to_csv(processed_file, index=False)
 
     print(f"Processed and balanced data saved to {processed_file}")
