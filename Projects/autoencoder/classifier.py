@@ -35,13 +35,13 @@ class ClassifierModel(nn.Module):
     ):
         super(ClassifierModel, self).__init__()  # Initialize the nn.Module class
         self.fc1 = nn.Linear(input_size, hidden_size)
-        self.bn1 = nn.BatchNorm1d(hidden_size)  # Add batch normalization
+        self.bn1 = nn.BatchNorm1d(hidden_size)  # Batch normalization for Layer 1
 
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.bn2 = nn.BatchNorm1d(hidden_size)
+        self.bn2 = nn.BatchNorm1d(hidden_size)  # Batch normalization for Layer 2
 
         self.fc3 = nn.Linear(hidden_size, hidden_size)
-        self.bn3 = nn.BatchNorm1d(hidden_size)
+        self.bn3 = nn.BatchNorm1d(hidden_size)  # Batch normalization for Layer 3
 
         self.fc4 = nn.Linear(hidden_size, output_size)
 
