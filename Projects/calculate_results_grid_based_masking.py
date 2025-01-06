@@ -1,3 +1,4 @@
+#location: Projects/calculate_results_grid_based_masking.py
 import pandas as pd
 
 # File paths
@@ -120,4 +121,4 @@ print(f"Total Test GO: {total_test_go}")
 print(summary_table)
 
 # Optionally save the table to a CSV file
-summary_table.to_csv("grid_based_summary_results.csv", index=False)
+summary_table.to_csv("plots/grid_based_masking_images/grid_based_summary_results.csv", index=False)
