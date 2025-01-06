@@ -1,29 +1,28 @@
+#location: Projects/calculate_results_lime_on_images.py
 import pandas as pd
 
-# File paths for train and test results
+# File paths
+original_train_csv = "dataset/town7_dataset/train/labeled_train_data_log.csv"
+original_test_csv = "dataset/town7_dataset/test/labeled_test_data_log.csv"
 csv_file_path_train = "plots/lime_on_images/lime_on_image_masking_train_results.csv"
 csv_file_path_test = "plots/lime_on_images/lime_on_image_masking_test_results.csv"
 
-# Load CSV files into dataframes
+# Load the original datasets to get total STOP and GO counts
+train_original = pd.read_csv(original_train_csv)
+test_original = pd.read_csv(original_test_csv)
+
+# Load the LIME on Image Masking results
 train_data = pd.read_csv(csv_file_path_train)
 test_data = pd.read_csv(csv_file_path_test)
 
-# Categories to summarize
-categories = [
-    "GO (Counterfactual Found)",
-    "STOP (Counterfactual Found)",
-    "GO (No Counterfactual)",
-    "STOP (No Counterfactual)",
-    "Total Time Taken (s)",
-    "Total Entries"
-]
+# Calculate total STOP and GO counts in the original datasets
+total_train_stop = len(train_original[train_original['label'] == 'STOP'])
+total_train_go = len(train_original[train_original['label'] == 'GO'])
+total_test_stop = len(test_original[test_original['label'] == 'STOP'])
+total_test_go = len(test_original[test_original['label'] == 'GO'])
 
 # Function to calculate counts and percentages
-def calculate_summary(data):
-    # Total counts for each prediction
-    total_go_predictions = data[data["Prediction"] == "GO"].shape[0]
-    total_stop_predictions = data[data["Prediction"] == "STOP"].shape[0]
-
+def calculate_summary(data, total_stop, total_go):
     # Counterfactual counts
     go_cf_found = data[(data["Prediction"] == "GO") & (data["Counterfactual Found"] == True)].shape[0]
     stop_cf_found = data[(data["Prediction"] == "STOP") & (data["Counterfactual Found"] == True)].shape[0]
@@ -32,11 +31,11 @@ def calculate_summary(data):
     total_time = data["Time Taken (s)"].sum()
     total_entries = data.shape[0]
     
-    # Calculate percentages based on total predictions
-    go_cf_found_perc = (go_cf_found / total_go_predictions) * 100 if total_go_predictions else 0
-    stop_cf_found_perc = (stop_cf_found / total_stop_predictions) * 100 if total_stop_predictions else 0
-    go_no_cf_perc = (go_no_cf / total_go_predictions) * 100 if total_go_predictions else 0
-    stop_no_cf_perc = (stop_no_cf / total_stop_predictions) * 100 if total_stop_predictions else 0
+    # Calculate percentages relative to original STOP and GO counts
+    go_cf_found_perc = (go_cf_found / total_go) * 100 if total_go else 0
+    stop_cf_found_perc = (stop_cf_found / total_stop) * 100 if total_stop else 0
+    go_no_cf_perc = (go_no_cf / total_go) * 100 if total_go else 0
+    stop_no_cf_perc = (stop_no_cf / total_stop) * 100 if total_stop else 0
 
     # Return dictionary with counts and percentages
     return {
@@ -49,8 +48,18 @@ def calculate_summary(data):
     }
 
 # Calculate summaries for train and test data
-train_summary = calculate_summary(train_data)
-test_summary = calculate_summary(test_data)
+train_summary = calculate_summary(train_data, total_train_stop, total_train_go)
+test_summary = calculate_summary(test_data, total_test_stop, total_test_go)
+
+# Categories to summarize
+categories = [
+    "GO (Counterfactual Found)",
+    "STOP (Counterfactual Found)",
+    "GO (No Counterfactual)",
+    "STOP (No Counterfactual)",
+    "Total Time Taken (s)",
+    "Total Entries"
+]
 
 # Create a detailed summary table
 summary_table = pd.DataFrame({
@@ -61,25 +70,16 @@ summary_table = pd.DataFrame({
     "Test Percentage (%)": [test_summary[cat][1] for cat in categories]
 })
 
+# Display the total STOP and GO counts from the original dataset
+print("Original Dataset Counts:")
+print(f"Total Train STOP: {total_train_stop}")
+print(f"Total Train GO: {total_train_go}")
+print(f"Total Test STOP: {total_test_stop}")
+print(f"Total Test GO: {total_test_go}")
+
 # Display the detailed summary table
-print("LIME on Image Masking Results Summary:")
+print("\nLIME on Image Masking Results Summary:")
 print(summary_table.to_string(index=False))
 
-# Optionally, save the summary table to a new CSV file
-summary_table.to_csv("lime_on_image_masking_results_summary.csv", index=False)
-
-# If you want to see specific details in the results:
-# For example, how many total GO and STOP predictions were there?
-total_go_train = train_data[train_data["Prediction"] == "GO"].shape[0]
-total_stop_train = train_data[train_data["Prediction"] == "STOP"].shape[0]
-print("\nDetailed Train Dataset Counts:")
-print(f"Total GO Predictions: {total_go_train}")
-print(f"Total STOP Predictions: {total_stop_train}")
-
-total_go_test = test_data[test_data["Prediction"] == "GO"].shape[0]
-total_stop_test = test_data[test_data["Prediction"] == "STOP"].shape[0]
-print("\nDetailed Test Dataset Counts:")
-print(f"Total GO Predictions: {total_go_test}")
-print(f"Total STOP Predictions: {total_stop_test}")
-
-
+# Optionally save the table to a CSV file
+summary_table.to_csv("plots/lime_on_images/lime_on_image_masking_results_summary.csv", index=False)
