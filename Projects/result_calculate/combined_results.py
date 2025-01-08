@@ -34,6 +34,45 @@ def safe_get_value(df, metric, column="Combined Count", default=0):
     except IndexError:
         return default
 
+# # Extract relevant metrics and combine results
+# combined_results = []
+
+# for method, df in zip(methods, [grid_df, object_detection_df, lime_latent_df, lime_image_df]):
+#     go_cf_found = safe_get_value(df, "GO (Counterfactual Found)")
+#     stop_cf_found = safe_get_value(df, "STOP (Counterfactual Found)")
+#     go_no_cf = safe_get_value(df, "GO (No Counterfactual)")
+#     stop_no_cf = safe_get_value(df, "STOP (No Counterfactual)")
+#     time_taken = safe_get_value(df, "Total Time Taken (s)")
+#     total_entries = safe_get_value(df, "Total Entries")
+
+#     # Calculate percentages
+#     go_cf_found_perc = (go_cf_found / total_go) * 100 if total_go > 0 else 0
+#     stop_cf_found_perc = (stop_cf_found / total_stop) * 100 if total_stop > 0 else 0
+#     go_no_cf_perc = (go_no_cf / total_go) * 100 if total_go > 0 else 0
+#     stop_no_cf_perc = (stop_no_cf / total_stop) * 100 if total_stop > 0 else 0
+
+#     combined_results.append({
+#         "Method": method,
+#         "GO (Counterfactual Found)": f"{go_cf_found} ({go_cf_found_perc:.2f}%)",
+#         "STOP (Counterfactual Found)": f"{stop_cf_found} ({stop_cf_found_perc:.2f}%)",
+#         "GO (No Counterfactual)": f"{go_no_cf} ({go_no_cf_perc:.2f}%)",
+#         "STOP (No Counterfactual)": f"{stop_no_cf} ({stop_no_cf_perc:.2f}%)",
+#         "Total Time Taken (s)": time_taken,
+#         "Total Entries": total_entries,
+#         "Total GO Cases": total_go,
+#         "Total STOP Cases": total_stop,
+#     })
+
+# # Convert combined results into a DataFrame
+# combined_table = pd.DataFrame(combined_results)
+
+# # Save the combined table
+# combined_table.to_csv("Projects/result_calculate/final_combined_results_summary.csv", index=False)
+
+# # Display the combined table
+# print("Final Combined Results with Number of Cases, Percentages, and Total GO/STOP Cases:")
+# print(combined_table)
+
 # Extract relevant metrics and combine results
 combined_results = []
 
@@ -44,12 +83,15 @@ for method, df in zip(methods, [grid_df, object_detection_df, lime_latent_df, li
     stop_no_cf = safe_get_value(df, "STOP (No Counterfactual)")
     time_taken = safe_get_value(df, "Total Time Taken (s)")
     total_entries = safe_get_value(df, "Total Entries")
+    total_percentage = safe_get_value(df, "Total Percentage (%)")
 
-    # Calculate percentages
-    go_cf_found_perc = (go_cf_found / total_go) * 100 if total_go > 0 else 0
-    stop_cf_found_perc = (stop_cf_found / total_stop) * 100 if total_stop > 0 else 0
-    go_no_cf_perc = (go_no_cf / total_go) * 100 if total_go > 0 else 0
-    stop_no_cf_perc = (stop_no_cf / total_stop) * 100 if total_stop > 0 else 0
+    # Calculate percentages relative to the method's total entries
+    total_method_cases = go_cf_found + stop_cf_found + go_no_cf + stop_no_cf
+    go_cf_found_perc = (go_cf_found / total_method_cases) * 100 if total_method_cases > 0 else 0
+    stop_cf_found_perc = (stop_cf_found / total_method_cases) * 100 if total_method_cases > 0 else 0
+    go_no_cf_perc = (go_no_cf / total_method_cases) * 100 if total_method_cases > 0 else 0
+    stop_no_cf_perc = (stop_no_cf / total_method_cases) * 100 if total_method_cases > 0 else 0
+    total_percentage = (total_method_cases / total_entries) * 100 if total_entries > 0 else 0
 
     combined_results.append({
         "Method": method,
@@ -59,16 +101,15 @@ for method, df in zip(methods, [grid_df, object_detection_df, lime_latent_df, li
         "STOP (No Counterfactual)": f"{stop_no_cf} ({stop_no_cf_perc:.2f}%)",
         "Total Time Taken (s)": time_taken,
         "Total Entries": total_entries,
-        "Total GO Cases": total_go,
-        "Total STOP Cases": total_stop,
+        "Total Percentage (%)": total_percentage,
     })
 
 # Convert combined results into a DataFrame
 combined_table = pd.DataFrame(combined_results)
 
 # Save the combined table
-combined_table.to_csv("Projects/result_calculate/final_combined_results_summary.csv", index=False)
+combined_table.to_csv("Projects/result_calculate/final_combined_results_summary_relative.csv", index=False)
 
 # Display the combined table
-print("Final Combined Results with Number of Cases, Percentages, and Total GO/STOP Cases:")
+print("Final Combined Results with Percentages Summing to 100% Within Each Method:")
 print(combined_table)
