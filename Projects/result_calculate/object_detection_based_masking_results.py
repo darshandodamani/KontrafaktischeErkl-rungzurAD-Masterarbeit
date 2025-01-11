@@ -1,132 +1,107 @@
 import pandas as pd
 
-# File paths
+# Load train and test CSV files
 train_csv = "plots/object_detection_using_yolov5/object_detection_counterfactual_summary_train.csv"
 test_csv = "plots/object_detection_using_yolov5/object_detection_counterfactual_summary_test.csv"
 
-# Original dataset totals
-train_dataset_csv = "dataset/town7_dataset/train/labeled_train_data_log.csv"
-test_dataset_csv = "dataset/town7_dataset/test/labeled_test_data_log.csv"
+# Load data
+train_data = pd.read_csv(train_csv)
+test_data = pd.read_csv(test_csv)
 
-# Load original dataset to calculate total GO and STOP cases
-train_data = pd.read_csv(train_dataset_csv)
-test_data = pd.read_csv(test_dataset_csv)
-total_go = train_data[train_data["label"] == "GO"].shape[0] + test_data[test_data["label"] == "GO"].shape[0]
-total_stop = train_data[train_data["label"] == "STOP"].shape[0] + test_data[test_data["label"] == "STOP"].shape[0]
+# Combine train and test data
+data = pd.concat([train_data, test_data], ignore_index=True)
 
-# Load train and test CSV files
-train_df = pd.read_csv(train_csv)
-test_df = pd.read_csv(test_csv)
+# Initialize metrics dictionary
+metrics = []
 
-# Function to summarize results
-def summarize_results(df, total_go, total_stop):
-    # Initialize counts
-    summary = {
-        "GO (Counterfactual Found)": 0,
-        "STOP (Counterfactual Found)": 0,
-        "GO (No Counterfactual)": 0,
-        "STOP (No Counterfactual)": 0,
-        "Total Processing Time (s)": 0,
-        "Total Entries": len(df),
-    }
+# Total entries and total time
+total_time = data["Processing Time (s)"].sum()
+total_entries = len(data)
 
-    # Iterate through rows and categorize
-    for _, row in df.iterrows():
-        prediction = row["Prediction"]
-        counterfactual_found = row["Counterfactual Found"]
-        processing_time = row["Processing Time (s)"]
+# Initialize overall counters
+overall_ce_found = 0
+overall_ce_not_found = 0
 
-        # Increment processing time
-        summary["Total Processing Time (s)"] += processing_time
+# Process each prediction class (GO and STOP)
+for prediction_class in ["GO", "STOP"]:
+    # Filter data by the initial prediction class
+    class_data = data[data["Initial Prediction"] == prediction_class]
+    
+    # Total cases for this class
+    total_cases = class_data.shape[0]
+    
+    # Counterfactual Found and Not Found
+    ce_found_count = class_data[class_data["Counterfactual Found"] == True].shape[0]
+    ce_not_found_count = class_data[class_data["Counterfactual Found"] == False].shape[0]
+    
+    # Percentages
+    ce_found_percentage = (ce_found_count / total_cases) * 100 if total_cases > 0 else 0
+    ce_not_found_percentage = (ce_not_found_count / total_cases) * 100 if total_cases > 0 else 0
 
-        # Classify the row
-        if prediction == "GO" and counterfactual_found:
-            summary["GO (Counterfactual Found)"] += 1
-        elif prediction == "STOP" and counterfactual_found:
-            summary["STOP (Counterfactual Found)"] += 1
-        elif prediction == "GO" and not counterfactual_found:
-            summary["GO (No Counterfactual)"] += 1
-        elif prediction == "STOP" and not counterfactual_found:
-            summary["STOP (No Counterfactual)"] += 1
+    # Add to overall counters
+    overall_ce_found += ce_found_count
+    overall_ce_not_found += ce_not_found_count
 
-    # Calculate percentages
-    percentages = {
-        "GO (Counterfactual Found)": (summary["GO (Counterfactual Found)"] / total_go) * 100,
-        "STOP (Counterfactual Found)": (summary["STOP (Counterfactual Found)"] / total_stop) * 100,
-        "GO (No Counterfactual)": (summary["GO (No Counterfactual)"] / total_go) * 100,
-        "STOP (No Counterfactual)": (summary["STOP (No Counterfactual)"] / total_stop) * 100,
-    }
+    # Add Total GO/STOP row
+    metrics.append({
+        "Metrics": f"Total {prediction_class}",
+        "Total Count": total_cases,
+        "Count": "",
+        "Percentage": ""
+    })
+    
+    # Add Counterfactual Found row
+    metrics.append({
+        "Metrics": f"{prediction_class} (Counterfactual Found)",
+        "Total Count": "",
+        "Count": ce_found_count,
+        "Percentage": f"{ce_found_percentage:.2f}%"
+    })
+    
+    # Add Counterfactual Not Found row
+    metrics.append({
+        "Metrics": f"{prediction_class} (Counterfactual Not Found)",
+        "Total Count": "",
+        "Count": ce_not_found_count,
+        "Percentage": f"{ce_not_found_percentage:.2f}%"
+    })
 
-    return summary, percentages
+# Add Overall Total and Percentages
+overall_found_percentage = (overall_ce_found / total_entries) * 100 if total_entries > 0 else 0
+overall_not_found_percentage = (overall_ce_not_found / total_entries) * 100 if total_entries > 0 else 0
 
-# Summarize results for train and test datasets
-train_summary, train_percentages = summarize_results(train_df, total_go, total_stop)
-test_summary, test_percentages = summarize_results(test_df, total_go, total_stop)
-
-# Combine train and test summaries
-combined_summary = {key: train_summary[key] + test_summary[key] for key in train_summary.keys()}
-combined_percentages = {key: (combined_summary[key] / total_go if "GO" in key else combined_summary[key] / total_stop) * 100
-                        for key in combined_summary.keys() if key not in ["Total Processing Time (s)", "Total Entries"]}
-
-# Add total processing time and entries for combined
-combined_summary["Total Processing Time (s)"] = train_summary["Total Processing Time (s)"] + test_summary["Total Processing Time (s)"]
-combined_summary["Total Entries"] = train_summary["Total Entries"] + test_summary["Total Entries"]
-
-# Create a DataFrame for the results
-summary_table = pd.DataFrame({
-    "Metric": ["GO (Counterfactual Found)", "STOP (Counterfactual Found)", "GO (No Counterfactual)", "STOP (No Counterfactual)", "Total Processing Time (s)", "Total Entries"],
-    "Train Count": [
-        train_summary["GO (Counterfactual Found)"],
-        train_summary["STOP (Counterfactual Found)"],
-        train_summary["GO (No Counterfactual)"],
-        train_summary["STOP (No Counterfactual)"],
-        train_summary["Total Processing Time (s)"],
-        train_summary["Total Entries"]
-    ],
-    "Train Percentage (%)": [
-        train_percentages["GO (Counterfactual Found)"],
-        train_percentages["STOP (Counterfactual Found)"],
-        train_percentages["GO (No Counterfactual)"],
-        train_percentages["STOP (No Counterfactual)"],
-        "-",
-        "-"
-    ],
-    "Test Count": [
-        test_summary["GO (Counterfactual Found)"],
-        test_summary["STOP (Counterfactual Found)"],
-        test_summary["GO (No Counterfactual)"],
-        test_summary["STOP (No Counterfactual)"],
-        test_summary["Total Processing Time (s)"],
-        test_summary["Total Entries"]
-    ],
-    "Test Percentage (%)": [
-        test_percentages["GO (Counterfactual Found)"],
-        test_percentages["STOP (Counterfactual Found)"],
-        test_percentages["GO (No Counterfactual)"],
-        test_percentages["STOP (No Counterfactual)"],
-        "-",
-        "-"
-    ],
-    "Combined Count": [
-        combined_summary["GO (Counterfactual Found)"],
-        combined_summary["STOP (Counterfactual Found)"],
-        combined_summary["GO (No Counterfactual)"],
-        combined_summary["STOP (No Counterfactual)"],
-        combined_summary["Total Processing Time (s)"],
-        combined_summary["Total Entries"]
-    ],
-    "Combined Percentage (%)": [
-        combined_percentages["GO (Counterfactual Found)"],
-        combined_percentages["STOP (Counterfactual Found)"],
-        combined_percentages["GO (No Counterfactual)"],
-        combined_percentages["STOP (No Counterfactual)"],
-        "-",
-        "-"
-    ]
+metrics.append({
+    "Metrics": "Total",
+    "Total Count": total_entries,
+    "Count": "",
+    "Percentage": ""
+})
+metrics.append({
+    "Metrics": "Total (Counterfactual Found)",
+    "Total Count": "",
+    "Count": overall_ce_found,
+    "Percentage": f"{overall_found_percentage:.2f}%"
+})
+metrics.append({
+    "Metrics": "Total (Counterfactual Not Found)",
+    "Total Count": "",
+    "Count": overall_ce_not_found,
+    "Percentage": f"{overall_not_found_percentage:.2f}%"
+})
+metrics.append({
+    "Metrics": "Total Time Taken",
+    "Total Count": "",
+    "Count": f"{total_time:.2f} seconds",
+    "Percentage": ""
 })
 
-# Display the table
-print(summary_table)
+# Convert metrics to a DataFrame
+summary_table = pd.DataFrame(metrics)
 
-# Save the table to a CSV file
-summary_table.to_csv("Projects/result_calculate/object_detection_results_summary.csv", index=False)
+# Save to CSV
+output_file = "plots/object_detection_using_yolov5/object_detection_summary.csv"
+summary_table.to_csv(output_file, index=False)
+
+# Print results to terminal
+print("\nObject Detection Masking Results:")
+print(summary_table)
