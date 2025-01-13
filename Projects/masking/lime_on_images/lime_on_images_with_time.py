@@ -4,6 +4,7 @@ import time
 import torch
 import numpy as np
 import csv
+import pandas as pd
 import torchvision.transforms as transforms
 from PIL import Image
 from lime import lime_image
@@ -58,85 +59,38 @@ def calculate_image_metrics(original, modified):
         modified_np = resize(modified_np, original_np.shape, anti_aliasing=True)
 
     metrics = {}
-    try:
-        metrics["SSIM"] = round(ssim(original_np, modified_np, channel_axis=-1, data_range=1.0), 5)
-    except ValueError:
-        metrics["SSIM"] = 0.0  # Default value for invalid calculations
-
-    try:
-        metrics["MSE"] = round(mse(original_np, modified_np), 5)
-    except ValueError:
-        metrics["MSE"] = float("inf")  # Default for invalid calculations
-
-    try:
-        metrics["PSNR"] = round(psnr(original_np, modified_np, data_range=1.0), 5)
-    except ValueError:
-        metrics["PSNR"] = 0.0
-
-    try:
-        metrics["VIFP"] = round(vifp(original_np, modified_np), 5)
-    except ValueError:
-        metrics["VIFP"] = 0.0
-
-    try:
-        metrics["UQI"] = round(uqi(original_np, modified_np), 5)
-    except ValueError:
-        metrics["UQI"] = 0.0
-
-    # Handle NaN values (replace with 0)
-    for key, value in metrics.items():
-        if np.isnan(value):
-            metrics[key] = 0.0
-
+    metrics["SSIM"] = round(ssim(original_np, modified_np, channel_axis=-1, data_range=1.0), 5)
+    metrics["MSE"] = round(mse(original_np, modified_np), 5)
+    metrics["PSNR"] = round(psnr(original_np, modified_np, data_range=1.0), 5)
+    metrics["VIFP"] = round(vifp(original_np, modified_np), 5)
+    metrics["UQI"] = round(uqi(original_np, modified_np), 5)
     return metrics
 
-# Define classifier prediction function for LIME
+# Classifier prediction function for LIME
 def classifier_prediction(image_tensor):
-    try:
-        with torch.no_grad():
-            image_tensor = torch.tensor(image_tensor.transpose(0, 3, 1, 2), dtype=torch.float32).to(device)
-            latent_vector = encoder(image_tensor)[2]
-            prediction = classifier(latent_vector)
-            probabilities = F.softmax(prediction, dim=1).cpu().detach().numpy()
-            return probabilities
-    except Exception as e:
-        print(f"Error in classifier_prediction: {e}")
-        return np.zeros((image_tensor.shape[0], 2))  # Dummy output
+    with torch.no_grad():
+        image_tensor = torch.tensor(image_tensor.transpose(0, 3, 1, 2), dtype=torch.float32).to(device)
+        latent_vector = encoder(image_tensor)[2]
+        prediction = classifier(latent_vector)
+        probabilities = F.softmax(prediction, dim=1).cpu().detach().numpy()
+        return probabilities
 
-# Plot and save images
+# Save images and plots
 def plot_and_save_images(input_image, reconstructed_image, masked_image, reconstructed_masked_image, filename):
-    """
-    Save a plot with four subplots:
-    - Original Image
-    - Reconstructed Image (resized to match original)
-    - Masked Image
-    - Reconstructed Masked Image (resized to match original)
-    """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    
     input_height, input_width = input_image.shape[2], input_image.shape[3]
     reconstructed_resized = F.interpolate(reconstructed_image, size=(input_height, input_width), mode='bilinear')
     reconstructed_masked_resized = F.interpolate(reconstructed_masked_image, size=(input_height, input_width), mode='bilinear')
 
     fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-
     axs[0].imshow(input_image.cpu().squeeze().permute(1, 2, 0).numpy())
     axs[0].set_title("Original Image")
-    axs[0].axis("off")
-
     axs[1].imshow(reconstructed_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy())
     axs[1].set_title("Reconstructed Image")
-    axs[1].axis("off")
-
     axs[2].imshow(masked_image.cpu().squeeze().permute(1, 2, 0).detach().numpy())
     axs[2].set_title("Masked Image")
-    axs[2].axis("off")
-
     axs[3].imshow(reconstructed_masked_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy())
     axs[3].set_title("Reconstructed Masked Image")
-    axs[3].axis("off")
-
-    plt.tight_layout()
     plt.savefig(filename)
     plt.close()
 
@@ -146,23 +100,32 @@ def process_dataset(dataset_dir, output_csv):
         transforms.Resize((80, 160)),
         transforms.ToTensor(),
     ])
-
-    total_time = 0
-
-    # Ensure output directory exists
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    total_time = 0
+    duplicate_ce_count = {}
 
     with open(output_csv, "w", newline="") as csvfile:
         fieldnames = [
-            "Image File", "Prediction (Before Masking)", "Confidence (Before Masking)",
-            "Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found",
-            "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Grid Size", "Grid Position", "Time Taken (s)"
+            "Image File",                   # Original image file name
+            "Prediction (Before Masking)", 
+            "Confidence (Before Masking)",
+            "Prediction (After Masking)",
+            "Confidence (After Masking)",
+            "Counterfactual Found",
+            "SSIM",                         # Structural similarity index
+            "MSE", 
+            "PSNR",
+            "UQI",
+            "VIFP",
+            "Grid Size",
+            "Grid Position",
+            "Time Taken (s)"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
         for image_filename in os.listdir(dataset_dir):
-            if not image_filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            if not image_filename.lower().endswith(('.png')):
                 continue
 
             image_path = os.path.join(dataset_dir, image_filename)
@@ -210,6 +173,9 @@ def process_dataset(dataset_dir, output_csv):
                 confidence_after = F.softmax(masked_prediction, dim=1).cpu().detach().numpy()
                 counterfactual_found = masked_class != predicted_class
 
+                if counterfactual_found:
+                    duplicate_ce_count[image_filename] = duplicate_ce_count.get(image_filename, 0) + 1
+
                 # Calculate metrics
                 metrics = calculate_image_metrics(
                     np.array(image),
@@ -228,27 +194,46 @@ def process_dataset(dataset_dir, output_csv):
                     "Prediction (After Masking)": masked_class,
                     "Confidence (After Masking)": [round(float(x), 5) for x in confidence_after[0]],
                     "Counterfactual Found": counterfactual_found,
-                    "SSIM": round(metrics["SSIM"], 5),
-                    "MSE": round(metrics["MSE"], 5),
-                    "PSNR": round(metrics["PSNR"], 5),
-                    "UQI": round(metrics["UQI"], 5),
-                    "VIFP": round(metrics["VIFP"], 5),
+                    "SSIM": metrics["SSIM"],
+                    "MSE": metrics["MSE"],
+                    "PSNR": metrics["PSNR"],
+                    "UQI": metrics["UQI"],
+                    "VIFP": metrics["VIFP"],
                     "Grid Size": "Superpixel",  # LIME does not use a grid
                     "Grid Position": "N/A",  # Placeholder
-                    "Time Taken (s)": round(time_taken, 5)
+                    "Time Taken (s)": time_taken
                 })
 
-                # Save plot
                 plot_and_save_images(
                     input_image, reconstructed_image, masked_image, reconstructed_masked_image,
                     f"plots/lime_on_images/{image_filename.split('.')[0]}_plot.png"
                 )
 
                 print(f"Processed {image_filename}: Time {time_taken}s, CE Found: {counterfactual_found}")
+
             except Exception as e:
                 print(f"Error processing {image_filename}: {e}")
 
+                # Log the error to the CSV with placeholders
+                writer.writerow({
+                    "Image File": image_filename,
+                    "Prediction (Before Masking)": "Error",
+                    "Confidence (Before Masking)": "N/A",
+                    "Prediction (After Masking)": "Error",
+                    "Confidence (After Masking)": "N/A",
+                    "Counterfactual Found": "N/A",
+                    "SSIM": "N/A",
+                    "MSE": "N/A",
+                    "PSNR": "N/A",
+                    "UQI": "N/A",
+                    "VIFP": "N/A",
+                    "Grid Size": "N/A",
+                    "Grid Position": "N/A",
+                    "Time Taken (s)": "N/A"
+                })
+
         print(f"Results saved to {output_csv}. Total Time Taken: {total_time:.2f} seconds.")
+        print(f"Duplicate CE Count: {duplicate_ce_count}")
 
 # Process train and test datasets
 process_dataset("dataset/town7_dataset/train/", "plots/lime_on_images/lime_on_image_masking_train_results.csv")
