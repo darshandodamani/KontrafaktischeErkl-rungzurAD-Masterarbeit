@@ -1,106 +1,63 @@
 import pandas as pd
-from venny4py.venny4py import venny4py
-import matplotlib.pyplot as plt
 
-# File paths to train and test CSV files for each method
-grid_train_csv = "plots/grid_based_masking_images/grid_based_counterfactual_results_train.csv"
-grid_test_csv = "plots/grid_based_masking_images/grid_based_counterfactual_results_test.csv"
+# Paths to result CSV files
+grid_csv = "plots/grid_based_masking_images/grid_based_summary.csv"
+object_detection_csv = "plots/object_detection_using_yolov5/object_detection_summary.csv"
+lime_on_images_csv = "plots/lime_on_images/lime_on_image_masking_summary.csv"
+lime_on_latent_csv = "plots/lime_plots/lime_latent_features_summary.csv"
 
-object_detection_train_csv = "plots/object_detection_using_yolov5/object_detection_counterfactual_summary_train.csv"
-object_detection_test_csv = "plots/object_detection_using_yolov5/object_detection_counterfactual_summary_test.csv"
+# Load summary CSVs into DataFrames and ensure numeric columns are converted correctly
+grid_data = pd.read_csv(grid_csv)
+object_detection_data = pd.read_csv(object_detection_csv)
+lime_on_images_data = pd.read_csv(lime_on_images_csv)
+lime_on_latent_data = pd.read_csv(lime_on_latent_csv)
 
-lime_latent_train_csv = "plots/lime_plots/lime_based_counterfactual_results_train.csv"
-lime_latent_test_csv = "plots/lime_plots/lime_based_counterfactual_results_test.csv"
+# Convert Total Count and Count columns to numeric if they exist
+for df in [grid_data, object_detection_data, lime_on_images_data, lime_on_latent_data]:
+    numeric_columns = ["Total Count", "Count"]
+    for column in numeric_columns:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
 
-lime_image_train_csv = "plots/lime_on_images/lime_on_image_masking_train_results.csv"
-lime_image_test_csv = "plots/lime_on_images/lime_on_image_masking_test_results.csv"
+# Function to extract required metrics from the summary DataFrame
+def extract_metrics(data, method_name):
+    total_entries = data.loc[data["Metrics"] == "Total", "Total Count"].values[0]
+    total_go_cases = data.loc[data["Metrics"] == "Total GO", "Total Count"].values[0]
+    total_stop_cases = data.loc[data["Metrics"] == "Total STOP", "Total Count"].values[0]
+    
+    metrics = {
+        "Method": method_name,
+        "GO (Counterfactual Found)": f'{data.loc[data["Metrics"] == "GO (Counterfactual Found)", "Count"].values[0]} ({data.loc[data["Metrics"] == "GO (Counterfactual Found)", "Percentage"].values[0]})',
+        "STOP (Counterfactual Found)": f'{data.loc[data["Metrics"] == "STOP (Counterfactual Found)", "Count"].values[0]} ({data.loc[data["Metrics"] == "STOP (Counterfactual Found)", "Percentage"].values[0]})',
+        "GO (No Counterfactual)": f'{data.loc[data["Metrics"] == "GO (Counterfactual Not Found)", "Count"].values[0]} ({data.loc[data["Metrics"] == "GO (Counterfactual Not Found)", "Percentage"].values[0]})',
+        "STOP (No Counterfactual)": f'{data.loc[data["Metrics"] == "STOP (Counterfactual Not Found)", "Count"].values[0]} ({data.loc[data["Metrics"] == "STOP (Counterfactual Not Found)", "Percentage"].values[0]})',
+        "Total Time Taken (s)": data.loc[data["Metrics"] == "Total Time Taken", "Count"].values[0],
+        "Total Entries": total_entries,
+        "Total GO Cases": total_go_cases,
+        "Total STOP Cases": total_stop_cases,
+        "GO (CF %)": f"{round((data.loc[data['Metrics'] == 'GO (Counterfactual Found)', 'Count'].values[0] / total_go_cases) * 100, 2)}%",
+        "STOP (CF %)": f"{round((data.loc[data['Metrics'] == 'STOP (Counterfactual Found)', 'Count'].values[0] / total_stop_cases) * 100, 2)}%"
+    }
+    return metrics
 
-# Load and combine train and test data for each method
-grid_df = pd.concat([pd.read_csv(grid_train_csv), pd.read_csv(grid_test_csv)], ignore_index=True)
-object_detection_df = pd.concat([pd.read_csv(object_detection_train_csv), pd.read_csv(object_detection_test_csv)], ignore_index=True)
-lime_latent_df = pd.concat([pd.read_csv(lime_latent_train_csv), pd.read_csv(lime_latent_test_csv)], ignore_index=True)
-lime_image_df = pd.concat([pd.read_csv(lime_image_train_csv), pd.read_csv(lime_image_test_csv)], ignore_index=True)
+# Extract metrics for each method
+grid_metrics = extract_metrics(grid_data, "Grid-Based Masking")
+object_detection_metrics = extract_metrics(object_detection_data, "Object Detection Masking")
+lime_on_images_metrics = extract_metrics(lime_on_images_data, "LIME on Images")
+lime_on_latent_metrics = extract_metrics(lime_on_latent_data, "LIME on Latent Features")
 
-# Filter for Counterfactual Found == True
-grid_ce = set(grid_df[grid_df["Counterfactual Found"] == True]["Image File"])
-object_detection_ce = set(object_detection_df[object_detection_df["Counterfactual Found"] == True]["Image File"])
-lime_latent_ce = set(lime_latent_df[lime_latent_df["Counterfactual Found"] == True]["Image File"])
-lime_image_ce = set(lime_image_df[lime_image_df["Counterfactual Found"] == True]["Image File"])
+# Combine metrics into a single DataFrame
+summary = pd.DataFrame([
+    grid_metrics,
+    object_detection_metrics,
+    lime_on_images_metrics,
+    lime_on_latent_metrics
+])
 
-# Combine all unique images across methods
-all_images = set(grid_df["Image File"]) | set(object_detection_df["Image File"]) | set(lime_latent_df["Image File"]) | set(lime_image_df["Image File"])
+# Save the comparative summary to a CSV file
+summary_csv_path = "plots/comparative_summary_across_methods_with_percentage.csv"
+summary.to_csv(summary_csv_path, index=False)
 
-# Generate the table
-table = []
-for image in all_images:
-    table.append({
-        "Image File": image,
-        "Grid": "True" if image in grid_ce else "False",
-        "LIME on Latent Features": "True" if image in lime_latent_ce else "False",
-        "LIME on Images": "True" if image in lime_image_ce else "False",
-        "Object Detection": "True" if image in object_detection_ce else "False",
-    })
-
-table_df = pd.DataFrame(table)
-
-# Save the table to a CSV
-table_df.to_csv("Projects/result_calculate/method_comparison_table.csv", index=False)
-print("Table saved as 'method_comparison_table.csv'.")
-
-# Use venny4py for the Venn diagram
-sets = {
-    "Grid-Based Masking": grid_ce,
-    "LIME on Latent Features": lime_latent_ce,
-    "LIME on Images": lime_image_ce,
-    "Object Detection-Based": object_detection_ce,
-}
-
-# Generate the Venn diagram
-venny4py(sets=sets)
-
-# Save the diagram as a PNG
-plt.title("Venn Diagram of Counterfactual Explanation Coverage")
-plt.savefig("Projects/result_calculate/venn_diagram_four_methods.png")
-
-# Summary statistics for individual methods
-print("\nSummary of Counterfactual Explanation Coverage:")
-print(f"Total Images: {len(all_images)}")
-print(f"Images Explained by Grid-Based Masking: {len(grid_ce)}")
-print(f"Images Explained by LIME on Latent Features: {len(lime_latent_ce)}")
-print(f"Images Explained by LIME on Images: {len(lime_image_ce)}")
-print(f"Images Explained by Object Detection-Based: {len(object_detection_ce)}")
-
-# Overlaps for exactly two methods
-explained_by_two_methods = {
-    "Grid-Based & LIME on Latent Features": len(grid_ce & lime_latent_ce - lime_image_ce - object_detection_ce),
-    "Grid-Based & LIME on Images": len(grid_ce & lime_image_ce - lime_latent_ce - object_detection_ce),
-    "Grid-Based & Object Detection-Based": len(grid_ce & object_detection_ce - lime_latent_ce - lime_image_ce),
-    "LIME on Latent Features & LIME on Images": len(lime_latent_ce & lime_image_ce - grid_ce - object_detection_ce),
-    "LIME on Latent Features & Object Detection-Based": len(lime_latent_ce & object_detection_ce - grid_ce - lime_image_ce),
-    "LIME on Images & Object Detection-Based": len(lime_image_ce & object_detection_ce - grid_ce - lime_latent_ce),
-}
-
-print("\nImages Explained by Exactly Two Methods:")
-for combination, count in explained_by_two_methods.items():
-    print(f"{combination}: {count} images")
-
-# Overlaps for exactly three methods
-explained_by_three_methods = {
-    "Grid-Based, LIME on Latent Features & LIME on Images": len(grid_ce & lime_latent_ce & lime_image_ce - object_detection_ce),
-    "Grid-Based, LIME on Latent Features & Object Detection-Based": len(grid_ce & lime_latent_ce & object_detection_ce - lime_image_ce),
-    "Grid-Based, LIME on Images & Object Detection-Based": len(grid_ce & lime_image_ce & object_detection_ce - lime_latent_ce),
-    "LIME on Latent Features, LIME on Images & Object Detection-Based": len(lime_latent_ce & lime_image_ce & object_detection_ce - grid_ce),
-}
-
-print("\nImages Explained by Exactly Three Methods:")
-for combination, count in explained_by_three_methods.items():
-    print(f"{combination}: {count} images")
-
-# Images explained by all four methods
-explained_by_all_methods = len(grid_ce & lime_latent_ce & lime_image_ce & object_detection_ce)
-print(f"\nImages Explained by All Four Methods: {explained_by_all_methods} images")
-
-# Images not explained by any method
-not_explained = all_images - (grid_ce | lime_latent_ce | lime_image_ce | object_detection_ce)
-print(f"\nImages Not Explained by Any Method: {len(not_explained)} images")
-
+# Print the comparative summary
+print("\nComparative Summary Across Methods:")
+print(summary)

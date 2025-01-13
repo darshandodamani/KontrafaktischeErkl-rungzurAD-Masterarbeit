@@ -1,18 +1,15 @@
 import pandas as pd
 
 # Paths to CSV files
-train_csv = "plots/lime_plots/lime_based_counterfactual_results_train.csv"
-test_csv = "plots/lime_plots/lime_based_counterfactual_results_test.csv"
+train_csv = "plots/lime_plots/lime_latent_masking_train_results_updated.csv"
+test_csv = "plots/lime_plots/lime_latent_masking_test_results_updated.csv"
 
-# Load the data
+# Load train and test data
 train_data = pd.read_csv(train_csv)
 test_data = pd.read_csv(test_csv)
 
 # Combine train and test data
 data = pd.concat([train_data, test_data], ignore_index=True)
-
-# Debug: Print column names
-print("CSV Column Names:", data.columns)
 
 # Initialize metrics dictionary
 metrics = []
@@ -25,16 +22,10 @@ total_entries = len(data)
 overall_ce_found = 0
 overall_ce_not_found = 0
 
-# Correct column name: Replace "Prediction (Before Masking)" with "Prediction"
-if "Prediction" not in data.columns:
-    print("Error: Column 'Prediction' not found in CSV.")
-    print(f"Available Columns: {data.columns}")
-    exit()
-
 # Process each prediction class (GO and STOP)
 for prediction_class in ["GO", "STOP"]:
-    # Filter data by the initial prediction class
-    class_data = data[data["Prediction"] == prediction_class]
+    # Filter data by the initial prediction class (Prediction Before Masking)
+    class_data = data[data["Prediction (Before Masking)"] == prediction_class]
     
     # Total cases for this class
     total_cases = class_data.shape[0]
