@@ -108,7 +108,7 @@ metrics.append({
 summary_table = pd.DataFrame(metrics)
 
 # Save to CSV
-output_file = "plots/lime_plots/lime_based_summary.csv"
+output_file = "plots/lime_plots/lime_latent_features_summary.csv"
 summary_table.to_csv(output_file, index=False)
 
 # Print results to terminal
