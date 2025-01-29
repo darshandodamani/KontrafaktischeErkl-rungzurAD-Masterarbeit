@@ -1,39 +1,37 @@
-# location: Projects/masking/object-detection/object_detection_based_masking.py
 import os
 import sys
+import csv
 import time
 import torch
 import numpy as np
-import torchvision.transforms as transforms
-import torch.nn.functional as F
+import pandas as pd
 from PIL import Image
+import torch.nn.functional as F
+from torchvision import transforms
 from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
 from sewar.full_ref import vifp, uqi
-from skimage.transform import resize
-import csv
 import matplotlib.pyplot as plt
-# warning: cache/torch/hub/ultralytics_yolov5_master/models/common.py:892: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead with amp.autocast(autocast):
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Add Python path to include the directory where 'encoder.py' is located
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder"))
-)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder")))
 
 from encoder import VariationalEncoder
 from decoder import Decoder
 from classifier import ClassifierModel as Classifier
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from initialize_masking_pipeline import initialize_method_results, update_method_results, initial_predictions_csv
 
-# Paths to models
+# Paths
 encoder_path = "model/epochs_500_latent_128_town_7/var_encoder_model.pth"
 decoder_path = "model/epochs_500_latent_128_town_7/decoder_model.pth"
 classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
+output_csv = "plots/object_detection_masking_results.csv"
+test_dir = "dataset/town7_dataset/test/"
+plot_dir = "plots/object_detection_masking_images"
+os.makedirs(plot_dir, exist_ok=True)
 
 # Load models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Load models
 encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(device)
 decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
 classifier = Classifier().to(device)
@@ -46,38 +44,12 @@ encoder.eval()
 decoder.eval()
 classifier.eval()
 
-# Load YOLOv5 model for object detection
-yolo_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
-
-# Transformations for image preprocessing
+# Transformations
 transform = transforms.Compose([
     transforms.Resize((80, 160)),
     transforms.ToTensor(),
 ])
 
-# Helper function to calculate image quality metrics
-def calculate_metrics(original, reconstructed):
-    """
-    Calculate metrics like SSIM, MSE, PSNR, VIFP, and UQI between two images.
-    Resizes the reconstructed image to match the original image dimensions.
-    """
-    original_np = original.cpu().squeeze().permute(1, 2, 0).numpy()
-    reconstructed_np = reconstructed.cpu().squeeze().permute(1, 2, 0).detach().numpy()
-
-    # Ensure reconstructed image has the same dimensions as the original
-    reconstructed_np_resized = resize(reconstructed_np, original_np.shape, anti_aliasing=True)
-
-    metrics = {
-        "SSIM": ssim(original_np, reconstructed_np_resized, channel_axis=-1, data_range=1.0),
-        "MSE": mse(original_np, reconstructed_np_resized),
-        "PSNR": psnr(original_np, reconstructed_np_resized, data_range=1.0),
-        "VIFP": vifp(original_np, reconstructed_np_resized),
-        "UQI": uqi(original_np, reconstructed_np_resized),
-    }
-    return metrics
-
-
-# Plot and save images for visualization
 def plot_and_save_images(input_image, reconstructed_image, masked_image, reconstructed_masked_image, filename):
     """
     Save a plot with four subplots:
@@ -118,112 +90,68 @@ def plot_and_save_images(input_image, reconstructed_image, masked_image, reconst
     
     print(f"Saved plot to: {filename}")
 
-# Process the dataset and generate results
-def process_dataset(dataset_dir, csv_filename, plot_dir):
-    """
-    Main function to process the dataset:
-    - Apply YOLOv5 object detection.
-    - Mask detected objects and evaluate counterfactual explanations.
-    - Save results in CSV and generate plots.
-    """
-    total_start_time = time.time()
-
-    with open(csv_filename, "w", newline="") as csvfile:
-        fieldnames = [
-            "Image File", "Initial Prediction", "Final Prediction", 
-            "Counterfactual Found", "Grid Size", "Grid Position", 
-            "Confidence Initial", "Confidence Final", 
-            "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Processing Time (s)"
+def process_object_detection_masking():
+    df_initial = pd.read_csv(initial_predictions_csv)
+    df_results = pd.read_csv(output_csv)
+    
+    for _, row in df_initial.iterrows():
+        start_time = time.time()
+        image_filename = row["Image File"]
+        image_path = os.path.join(test_dir, image_filename)
+        
+        image = Image.open(image_path).convert("RGB")
+        input_image = transform(image).unsqueeze(0).to(device)
+        
+        counterfactual_found = False
+        final_prediction = row["Prediction (Before Masking)"]
+        grid_size_found = None
+        grid_position_found = None
+        confidence_final = "N/A"
+        confidence_final_str = "N/A"
+        metrics = {}
+        
+        # Load YOLO model
+        yolo_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
+        results = yolo_model(image)
+        detections = results.xyxy[0]
+        objects_detected = [results.names[int(det[5])] for det in detections] if detections.numel() > 0 else []
+        
+        if detections.numel() > 0:
+            for det in detections:
+                x_min, y_min, x_max, y_max = map(int, det[:4])
+                grid_size = f"({x_max - x_min}, {y_max - y_min})"
+                grid_position = f"({x_min}, {y_min})"
+                
+                masked_image = input_image.clone()
+                masked_image[:, :, y_min:y_max, x_min:x_max] = 0
+                
+                latent_vector_masked = encoder(masked_image)[2]
+                masked_prediction = classifier(latent_vector_masked)
+                confidence_final = F.softmax(masked_prediction, dim=1).cpu().detach().numpy().flatten()
+                confidence_final_str = ", ".join(map(str, confidence_final))
+                predicted_label_after_masking = torch.argmax(masked_prediction, dim=1).item()
+                final_prediction = "STOP" if predicted_label_after_masking == 0 else "GO"
+                
+                if final_prediction != row["Prediction (Before Masking)"]:
+                    counterfactual_found = True
+                    grid_size_found = grid_size
+                    grid_position_found = grid_position
+                    plot_filename = os.path.join(plot_dir, f"{image_filename}_mask_{x_min}_{y_min}.png")
+                    plot_and_save_images(input_image, decoder(encoder(input_image)[2]), masked_image, decoder(latent_vector_masked), plot_filename)
+                    break
+                
+        end_time = time.time()
+        total_time_taken = round(end_time - start_time + row["Time Taken (s)"], 5)
+        
+        df_results.loc[df_results['Image File'] == image_filename, [
+            "Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found", "Grid Size", "Grid Position", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Time Taken (s)"
+        ]] = [
+            final_prediction, confidence_final_str, counterfactual_found, grid_size_found, grid_position_found,
+            metrics.get("SSIM", None), metrics.get("MSE", None), metrics.get("PSNR", None),
+            metrics.get("UQI", None), metrics.get("VIFP", None), ", ".join(objects_detected), total_time_taken
         ]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
+    
+    df_results.to_csv(output_csv, index=False)
+    print(f"Object detection-based masking results saved to {output_csv}")
 
-        for image_filename in os.listdir(dataset_dir):
-            if not image_filename.lower().endswith(('.png')):
-                continue
-
-            image_path = os.path.join(dataset_dir, image_filename)
-            image = Image.open(image_path).convert('RGB')
-            input_image = transform(image).unsqueeze(0).to(device)
-
-
-            start_time = time.time()
-
-            # Step 1: Initial Prediction and Reconstruction
-            latent_vector = encoder(input_image)[2]
-            reconstructed_image = decoder(latent_vector)
-            initial_prediction = classifier(latent_vector)
-            initial_class = "STOP" if torch.argmax(initial_prediction, dim=1).item() == 0 else "GO"
-            confidence_initial = F.softmax(initial_prediction, dim=1)[0]
-
-            # Step 2: YOLOv5 Object Detection
-            results = yolo_model(image)
-            detections = results.xyxy[0]
-            objects_detected = [results.names[int(det[5])] for det in detections] if detections.numel() > 0 else []
-
-            counterfactual_found = False
-            metrics_masked = {"SSIM": None, "MSE": None, "PSNR": None, "UQI": None, "VIFP": None}
-            confidence_final = None
-            final_class = None
-
-            # Process each detected object
-            if detections.numel() > 0:
-                for det in detections:
-                    x_min, y_min, x_max, y_max = map(int, det[:4])
-                    grid_size = f"({x_max - x_min}, {y_max - y_min})"
-                    grid_position = f"({x_min}, {y_min})"
-
-                    # Create masked image
-                    masked_image = input_image.clone()
-                    masked_image[:, :, y_min:y_max, x_min:x_max] = 0
-
-                    # Reconstruct and classify masked image
-                    masked_latent_vector = encoder(masked_image)[2]
-                    reconstructed_masked_image = decoder(masked_latent_vector)
-                    final_prediction = classifier(masked_latent_vector)
-                    confidence_final = F.softmax(final_prediction, dim=1)[0]
-                    final_class = "STOP" if torch.argmax(final_prediction, dim=1).item() == 0 else "GO"
-
-                    if final_class != initial_class:
-                        counterfactual_found = True
-                        metrics_masked = calculate_metrics(input_image, reconstructed_masked_image)
-                        plot_and_save_images(
-                            input_image, reconstructed_image, masked_image, reconstructed_masked_image,
-                            os.path.join(plot_dir, f"{image_filename}_mask_{x_min}_{y_min}.png")
-                        )
-                        break
-
-            processing_time = time.time() - start_time
-
-            # Save results to CSV
-            writer.writerow({
-                "Image File": image_filename,
-                "Initial Prediction": initial_class,
-                "Final Prediction": final_class,
-                "Counterfactual Found": counterfactual_found,
-                "Grid Size": grid_size if detections.numel() > 0 else None,
-                "Grid Position": grid_position if detections.numel() > 0 else None,
-                "Confidence Initial": [round(x, 5) for x in confidence_initial.tolist()],
-                "Confidence Final": [round(x, 5) for x in confidence_final.tolist()] if confidence_final is not None else None,
-                "SSIM": round(metrics_masked["SSIM"], 5) if metrics_masked["SSIM"] else None,
-                "MSE": round(metrics_masked["MSE"], 5) if metrics_masked["MSE"] else None,
-                "PSNR": round(metrics_masked["PSNR"], 5) if metrics_masked["PSNR"] else None,
-                "UQI": round(metrics_masked["UQI"], 5) if metrics_masked["UQI"] else None,
-                "VIFP": round(metrics_masked["VIFP"], 5) if metrics_masked["VIFP"] else None,
-                "Objects Detected": ", ".join(objects_detected),
-                "Processing Time (s)": round(processing_time, 5)
-            })
-
-
-    print(f"Total processing time: {round(time.time() - total_start_time, 2)} seconds")
-
-
-
-# Process train and test datasets
-process_dataset('dataset/town7_dataset/train/', 
-                'plots/object_detection_using_yolov5/object_detection_counterfactual_summary_train.csv',
-                'plots/object_detection_using_yolov5/train_plots/')
-
-process_dataset('dataset/town7_dataset/test/', 
-                'plots/object_detection_using_yolov5/object_detection_counterfactual_summary_test.csv',
-                'plots/object_detection_using_yolov5/test_plots/')
+process_object_detection_masking()
