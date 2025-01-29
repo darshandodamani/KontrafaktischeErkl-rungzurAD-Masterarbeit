@@ -1,44 +1,43 @@
 import os
+import sys
 import csv
 import time
-import sys
 import torch
 import numpy as np
-import torchvision.transforms as transforms
+import pandas as pd
 from PIL import Image
 import torch.nn.functional as F
+from torchvision import transforms
 from skimage.metrics import structural_similarity as ssim, mean_squared_error as mse, peak_signal_noise_ratio as psnr
 from sewar.full_ref import vifp, uqi
 import matplotlib.pyplot as plt
 
 # Add Python path to include the directory where 'encoder.py' is located
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder"))
-)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "autoencoder")))
 
 from encoder import VariationalEncoder
 from decoder import Decoder
 from classifier import ClassifierModel as Classifier
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from initialize_masking_pipeline import initialize_method_results, update_method_results, initial_predictions_csv
 
 # Paths
 encoder_path = "model/epochs_500_latent_128_town_7/var_encoder_model.pth"
 decoder_path = "model/epochs_500_latent_128_town_7/decoder_model.pth"
 classifier_path = "model/epochs_500_latent_128_town_7/classifier_final.pth"
-train_dir = "dataset/town7_dataset/train/"
+output_csv = "plots/grid_based_masking_results.csv"
 test_dir = "dataset/town7_dataset/test/"
-output_train_csv = "plots/grid_based_masking_images/grid_based_counterfactual_results_train.csv"
-output_test_csv = "plots/grid_based_masking_images/grid_based_counterfactual_results_test.csv"
-
-# Device configuration
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+plot_dir = "plots/grid_based_masking_images"
+os.makedirs(plot_dir, exist_ok=True)
 
 # Load models
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 encoder = VariationalEncoder(latent_dims=128, num_epochs=100).to(device)
 decoder = Decoder(latent_dims=128, num_epochs=100).to(device)
 classifier = Classifier().to(device)
 
 encoder.load_state_dict(torch.load(encoder_path, map_location=device, weights_only=True))
-decoder.load_state_dict(torch.load(decoder_path, map_location=device, weights_only=True))   
+decoder.load_state_dict(torch.load(decoder_path, map_location=device, weights_only=True))
 classifier.load_state_dict(torch.load(classifier_path, map_location=device, weights_only=True))
 
 encoder.eval()
@@ -51,7 +50,6 @@ transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-# Function to calculate metrics
 def calculate_image_metrics(original_image, modified_image):
     original_np = original_image.cpu().squeeze().numpy().transpose(1, 2, 0)
     modified_np = modified_image.cpu().squeeze().numpy().transpose(1, 2, 0)
@@ -67,22 +65,6 @@ def calculate_image_metrics(original_image, modified_image):
     }
     return metrics
 
-# Grid masking function
-def grid_masking(input_image, grid_size=(10, 5), mask_value=0, pos=0):
-    masked_image = input_image.clone().squeeze().permute(1, 2, 0).cpu().numpy()
-    x, y = grid_size
-    x_pos = pos % x
-    y_pos = pos // x
-    x_size = masked_image.shape[1] // x
-    y_size = masked_image.shape[0] // y
-    x_start = x_pos * x_size
-    y_start = y_pos * y_size
-    x_end = x_start + x_size
-    y_end = y_start + y_size
-    masked_image[y_start:y_end, x_start:x_end] = mask_value
-    return transforms.ToTensor()(masked_image).unsqueeze(0).to(device)
-
-# Function to save images
 def plot_and_save_images(input_image, reconstructed_image, masked_image, reconstructed_masked_image, filename):
     """
     Save a plot of the input image, reconstructed image, grid-masked image, and reconstructed grid-masked image.
@@ -122,113 +104,56 @@ def plot_and_save_images(input_image, reconstructed_image, masked_image, reconst
     print(f"Saved plot to: {filename}")
 
 
-# Function to process dataset
-def process_dataset(image_dir, output_csv, grid_sizes=[(10, 5), (4, 2)]):
-    image_files = [f for f in os.listdir(image_dir) if f.endswith('.png')]
-
-    # Open CSV file for writing results
-    with open(output_csv, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        # Write header
-        writer.writerow([
-            "Image File", "Initial Prediction Class", "Final Prediction Class",
-            "Counterfactual Found", "Grid Size", "Grid Position", 
-            "Confidence Initial", "Confidence Final", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Time Taken (s)"
-        ])
-
-        total_time = 0  # Track total time for processing all images
-
-        # Ensure plot directory exists
-        plot_dir = "plots/grid_based_masking_images"
-        os.makedirs(plot_dir, exist_ok=True)
-
-        # Process each image
-        for image_filename in image_files:
-            image_path = os.path.join(image_dir, image_filename)
-            start_time = time.time()
-            try:
-                image = Image.open(image_path).convert('RGB')
-                input_image = transform(image).unsqueeze(0).to(device)
+def process_grid_based_masking():
+    df_initial = pd.read_csv(initial_predictions_csv)
+    df_results = pd.read_csv(output_csv)
+    
+    for _, row in df_initial.iterrows():
+        start_time = time.time()
+        image_filename = row["Image File"]
+        image_path = os.path.join(test_dir, image_filename)
+        
+        image = Image.open(image_path).convert("RGB")
+        input_image = transform(image).unsqueeze(0).to(device)
+        
+        counterfactual_found = False
+        final_prediction = row["Prediction (Before Masking)"]
+        grid_size_found = None
+        grid_position_found = None
+        confidence_final = None
+        metrics = {}
+        
+        for grid_size in [(10, 5), (4, 2)]:  # Multiple grid sizes
+            for pos in range(grid_size[0] * grid_size[1]):
+                masked_image = input_image.clone()
+                masked_image[:, :, (pos // grid_size[1]) * (80 // grid_size[0]): ((pos // grid_size[1]) + 1) * (80 // grid_size[0]),
+                             (pos % grid_size[1]) * (160 // grid_size[1]): ((pos % grid_size[1]) + 1) * (160 // grid_size[1])] = 0
                 
-                # Initial prediction
-                latent_vector = encoder(input_image)[2]
-                input_image_predicted_label = classifier(latent_vector)
-                predicted_label = torch.argmax(input_image_predicted_label, dim=1).item()
-                initial_prediction_class = "STOP" if predicted_label == 0 else "GO"
-                confidence_initial = F.softmax(input_image_predicted_label, dim=1)[0]
+                latent_vector_masked = encoder(masked_image)[2]
+                masked_prediction = classifier(latent_vector_masked)
+                confidence_final = F.softmax(masked_prediction, dim=1).cpu().detach().numpy().flatten()
+                confidence_final_str = ", ".join(map(str, confidence_final))
+                predicted_label_after_masking = torch.argmax(masked_prediction, dim=1).item()
+                final_prediction = "STOP" if predicted_label_after_masking == 0 else "GO"
+                
+                if final_prediction != row["Prediction (Before Masking)"]:
+                    counterfactual_found = True
+                    grid_size_found = str(grid_size)
+                    grid_position_found = pos
+                    metrics = calculate_image_metrics(input_image, masked_image)
+                    
+                    plot_filename = os.path.join(plot_dir, f"{image_filename}_grid_{grid_size[0]}x{grid_size[1]}_pos_{pos}.png")
+                    plot_and_save_images(input_image, decoder(encoder(input_image)[2]), masked_image, decoder(latent_vector_masked), plot_filename)
+                    break
+            if counterfactual_found:
+                break
+        
+        end_time = time.time()
+        total_time_taken = round(end_time - start_time + row["Time Taken (s)"], 5)
+        
+        df_results.loc[df_results['Image File'] == image_filename, ["Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found", "Grid Size", "Grid Position", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Time Taken (s)"]] = [final_prediction, confidence_final_str, counterfactual_found, grid_size_found, grid_position_found, metrics.get("SSIM", None), metrics.get("MSE", None), metrics.get("PSNR", None), metrics.get("UQI", None), metrics.get("VIFP", None), total_time_taken]
+    
+    df_results.to_csv(output_csv, index=False)
+    print(f"Grid-based masking results saved to {output_csv}")
 
-                # Grid masking
-                counterfactual_found = False
-                final_prediction_class = None
-                grid_size_found = None
-                grid_position_found = None
-                confidence_final = None
-                metrics = {}
-
-                for grid in grid_sizes:
-                    grid_rows, grid_cols = grid
-                    for pos in range(grid_rows * grid_cols):
-                        # Apply grid-based masking
-                        grid_based_masked_image = grid_masking(input_image, grid_size=grid, pos=pos)
-                        latent_vector_after_masking = encoder(grid_based_masked_image)[2]
-                        predicted_class_after_masking = classifier(latent_vector_after_masking)
-                        confidence_final = F.softmax(predicted_class_after_masking, dim=1)[0]
-                        predicted_label_after_masking = torch.argmax(predicted_class_after_masking, dim=1).item()
-                        final_prediction_class = "STOP" if predicted_label_after_masking == 0 else "GO"
-
-                        # Check for counterfactual explanation
-                        if final_prediction_class != initial_prediction_class:
-                            counterfactual_found = True
-                            grid_size_found = grid
-                            grid_position_found = pos
-                            metrics = calculate_image_metrics(
-                                input_image.squeeze(),
-                                grid_based_masked_image.squeeze(),
-                            )
-
-                            # Save plots
-                            plot_filename = os.path.join(
-                                plot_dir,
-                                f"plot_{image_filename.split('.')[0]}_grid_{grid_rows}x{grid_cols}_pos_{pos}.png"
-                            )
-                            plot_and_save_images(
-                                input_image,
-                                decoder(latent_vector),
-                                grid_based_masked_image,
-                                decoder(latent_vector_after_masking),
-                                plot_filename
-                            )
-                            break
-                    if counterfactual_found:
-                        break
-
-                end_time = time.time()
-                time_taken = round(end_time - start_time, 2)
-                total_time += time_taken
-
-                # Save results for the current image
-                writer.writerow([
-                    image_filename,
-                    initial_prediction_class,
-                    final_prediction_class,
-                    counterfactual_found,
-                    grid_size_found,
-                    grid_position_found,
-                    [round(c, 5) for c in confidence_initial.tolist()] if confidence_initial is not None else None,
-                    [round(c, 5) for c in confidence_final.tolist()] if confidence_final is not None else None,
-                    metrics.get("SSIM", None),
-                    metrics.get("MSE", None),
-                    metrics.get("PSNR", None),
-                    metrics.get("UQI", None),
-                    metrics.get("VIFP", None),
-                    time_taken
-                ])
-                print(f"Processed {image_filename} - Counterfactual Found: {counterfactual_found} - Time: {time_taken}s")
-            except Exception as e:
-                print(f"Error processing {image_filename}: {e}")
-
-        print(f"Results saved to {output_csv}. Total Time Taken: {total_time:.2f} seconds.")
-
-# Process train and test datasets
-process_dataset(train_dir, output_train_csv)
-process_dataset(test_dir, output_test_csv)
+process_grid_based_masking()
