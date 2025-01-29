@@ -1,6 +1,5 @@
 import os
 import sys
-import csv
 import time
 import torch
 import numpy as np
@@ -44,114 +43,126 @@ encoder.eval()
 decoder.eval()
 classifier.eval()
 
+# Load YOLO model once before the loop
+yolo_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
+
 # Transformations
 transform = transforms.Compose([
     transforms.Resize((80, 160)),
     transforms.ToTensor(),
 ])
 
+
+def calculate_image_metrics(original_image, modified_image):
+    """Calculate image similarity metrics."""
+    original_np = original_image.cpu().squeeze().permute(1, 2, 0).numpy()
+    modified_np = modified_image.cpu().squeeze().permute(1, 2, 0).detach().numpy()
+
+    metrics = {
+        "SSIM": round(ssim(original_np, modified_np, channel_axis=-1, data_range=1.0), 5),
+        "MSE": round(mse(original_np, modified_np), 5),
+        "PSNR": round(psnr(original_np, modified_np, data_range=1.0), 5),
+        "UQI": round(uqi(original_np, modified_np), 5),
+        "VIFP": round(vifp(original_np, modified_np), 5),
+    }
+    return metrics
+
+
 def plot_and_save_images(input_image, reconstructed_image, masked_image, reconstructed_masked_image, filename):
-    """
-    Save a plot with four subplots:
-    - Original Image
-    - Reconstructed Image (resized to match original)
-    - Masked Image
-    - Reconstructed Masked Image (resized to match original)
-    """
-    # Ensure the directory exists
+    """Save visualization of original, masked, and reconstructed images."""
     os.makedirs(os.path.dirname(filename), exist_ok=True)
 
-    # Resize reconstructed images to match original input dimensions
     input_height, input_width = input_image.shape[2], input_image.shape[3]
-    reconstructed_image_resized = F.interpolate(reconstructed_image, size=(input_height, input_width), mode='bilinear', align_corners=False)
-    reconstructed_masked_image_resized = F.interpolate(reconstructed_masked_image, size=(input_height, input_width), mode='bilinear', align_corners=False)
+    reconstructed_resized = F.interpolate(reconstructed_image, size=(input_height, input_width), mode='bilinear')
+    reconstructed_masked_resized = F.interpolate(reconstructed_masked_image, size=(input_height, input_width), mode='bilinear')
 
     fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-
     axs[0].imshow(input_image.cpu().squeeze().permute(1, 2, 0).numpy())
     axs[0].set_title("Original Image")
-    axs[0].axis("off")
-
-    axs[1].imshow(reconstructed_image_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy())
+    axs[1].imshow(reconstructed_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy())
     axs[1].set_title("Reconstructed Image")
-    axs[1].axis("off")
-
     axs[2].imshow(masked_image.cpu().squeeze().permute(1, 2, 0).detach().numpy())
     axs[2].set_title("Masked Image")
-    axs[2].axis("off")
-
-    axs[3].imshow(reconstructed_masked_image_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy())
+    axs[3].imshow(reconstructed_masked_resized.cpu().squeeze().permute(1, 2, 0).detach().numpy())
     axs[3].set_title("Reconstructed Masked Image")
-    axs[3].axis("off")
 
-    plt.tight_layout()
     plt.savefig(filename)
-    plt.close()    
-    
+    plt.close()
+
     print(f"Saved plot to: {filename}")
 
+
 def process_object_detection_masking():
+    """Runs object detection-based masking and updates the results CSV row-by-row."""
     df_initial = pd.read_csv(initial_predictions_csv)
     df_results = pd.read_csv(output_csv)
-    
+
     for _, row in df_initial.iterrows():
         start_time = time.time()
         image_filename = row["Image File"]
         image_path = os.path.join(test_dir, image_filename)
-        
+
+        # Load image and convert to tensor
         image = Image.open(image_path).convert("RGB")
         input_image = transform(image).unsqueeze(0).to(device)
-        
+
+        # Default values
         counterfactual_found = False
         final_prediction = row["Prediction (Before Masking)"]
         grid_size_found = None
         grid_position_found = None
-        confidence_final = "N/A"
         confidence_final_str = "N/A"
         metrics = {}
-        
-        # Load YOLO model
-        yolo_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', force_reload=False, autoshape=True)
+
+        # Perform YOLO object detection
         results = yolo_model(image)
         detections = results.xyxy[0]
         objects_detected = [results.names[int(det[5])] for det in detections] if detections.numel() > 0 else []
-        
+
         if detections.numel() > 0:
             for det in detections:
                 x_min, y_min, x_max, y_max = map(int, det[:4])
                 grid_size = f"({x_max - x_min}, {y_max - y_min})"
                 grid_position = f"({x_min}, {y_min})"
-                
+
                 masked_image = input_image.clone()
                 masked_image[:, :, y_min:y_max, x_min:x_max] = 0
-                
+
                 latent_vector_masked = encoder(masked_image)[2]
                 masked_prediction = classifier(latent_vector_masked)
                 confidence_final = F.softmax(masked_prediction, dim=1).cpu().detach().numpy().flatten()
                 confidence_final_str = ", ".join(map(str, confidence_final))
                 predicted_label_after_masking = torch.argmax(masked_prediction, dim=1).item()
                 final_prediction = "STOP" if predicted_label_after_masking == 0 else "GO"
-                
+
                 if final_prediction != row["Prediction (Before Masking)"]:
                     counterfactual_found = True
                     grid_size_found = grid_size
                     grid_position_found = grid_position
+
+                    # Calculate metrics
+                    metrics = calculate_image_metrics(input_image, masked_image)
+
+                    # Save plot
                     plot_filename = os.path.join(plot_dir, f"{image_filename}_mask_{x_min}_{y_min}.png")
                     plot_and_save_images(input_image, decoder(encoder(input_image)[2]), masked_image, decoder(latent_vector_masked), plot_filename)
-                    break
-                
+                    break  # Stop after first counterfactual found
+
         end_time = time.time()
         total_time_taken = round(end_time - start_time + row["Time Taken (s)"], 5)
-        
+
         df_results.loc[df_results['Image File'] == image_filename, [
-            "Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found", "Grid Size", "Grid Position", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Time Taken (s)"
+            "Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found",
+            "Grid Size", "Grid Position", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Time Taken (s)"
         ]] = [
             final_prediction, confidence_final_str, counterfactual_found, grid_size_found, grid_position_found,
-            metrics.get("SSIM", None), metrics.get("MSE", None), metrics.get("PSNR", None),
-            metrics.get("UQI", None), metrics.get("VIFP", None), ", ".join(objects_detected), total_time_taken
+            metrics.get("SSIM", ""), metrics.get("MSE", ""), metrics.get("PSNR", ""),
+            metrics.get("UQI", ""), metrics.get("VIFP", ""), ", ".join(objects_detected), total_time_taken
         ]
-    
-    df_results.to_csv(output_csv, index=False)
+
+        df_results.to_csv(output_csv, index=False)
+
     print(f"Object detection-based masking results saved to {output_csv}")
+
 
 process_object_detection_masking()
