@@ -1,15 +1,9 @@
 import pandas as pd
 
-# Paths to CSV files
-train_csv = "plots/lime_plots/lime_latent_masking_train_results_updated.csv"
-test_csv = "plots/lime_plots/lime_latent_masking_test_results_updated.csv"
+# Load the LIME on latent features masking results CSV file
+lime_latent_csv = "plots/lime_on_latent_masking_results.csv"
 
-# Load train and test data
-train_data = pd.read_csv(train_csv)
-test_data = pd.read_csv(test_csv)
-
-# Combine train and test data
-data = pd.concat([train_data, test_data], ignore_index=True)
+data = pd.read_csv(lime_latent_csv)
 
 # Initialize metrics dictionary
 metrics = []
@@ -24,7 +18,7 @@ overall_ce_not_found = 0
 
 # Process each prediction class (GO and STOP)
 for prediction_class in ["GO", "STOP"]:
-    # Filter data by the initial prediction class (Prediction Before Masking)
+    # Filter data by the initial prediction class
     class_data = data[data["Prediction (Before Masking)"] == prediction_class]
     
     # Total cases for this class
@@ -91,7 +85,7 @@ metrics.append({
 metrics.append({
     "Metrics": "Total Time Taken",
     "Total Count": "",
-    "Count": f"{total_time:.2f} seconds",
+    "Count": f"{total_time:.2f}",
     "Percentage": ""
 })
 
@@ -99,9 +93,9 @@ metrics.append({
 summary_table = pd.DataFrame(metrics)
 
 # Save to CSV
-output_file = "plots/lime_plots/lime_latent_features_summary.csv"
+output_file = "plots/lime_on_latent_summary.csv"
 summary_table.to_csv(output_file, index=False)
 
 # Print results to terminal
-print("\nLIME-Based Latent Vector Masking Results:")
+print("\nLIME on Latent Features Masking Results:")
 print(summary_table)
