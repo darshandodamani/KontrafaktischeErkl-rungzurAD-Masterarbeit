@@ -1,14 +1,9 @@
 import pandas as pd
 
 # Load train and test CSV files
-train_csv = "plots/grid_based_masking_images/grid_based_counterfactual_results_train.csv"
-test_csv = "plots/grid_based_masking_images/grid_based_counterfactual_results_test.csv"
+grid_based_csv = "plots/grid_based_masking_results.csv"
 
-train_data = pd.read_csv(train_csv)
-test_data = pd.read_csv(test_csv)
-
-# Combine train and test data
-data = pd.concat([train_data, test_data], ignore_index=True)
+data = pd.read_csv(grid_based_csv)
 
 # Initialize metrics dictionary
 metrics = []
@@ -24,7 +19,7 @@ overall_ce_not_found = 0
 # Process each prediction class (GO and STOP)
 for prediction_class in ["GO", "STOP"]:
     # Filter data by the initial prediction class
-    class_data = data[data["Initial Prediction Class"] == prediction_class]
+    class_data = data[data["Prediction (Before Masking)"] == prediction_class]
     
     # Total cases for this class
     total_cases = class_data.shape[0]
@@ -90,16 +85,15 @@ metrics.append({
 metrics.append({
     "Metrics": "Total Time Taken",
     "Total Count": "",
-    "Count": f"{total_time:.2f} seconds",
+    "Count": f"{total_time:.2f}",
     "Percentage": ""
 })
 
 # Convert metrics to a DataFrame
 summary_table = pd.DataFrame(metrics)
 
-
 # Save to CSV
-output_file = "plots/grid_based_masking_images/grid_based_summary.csv"
+output_file = "plots/grid_based_summary.csv"
 summary_table.to_csv(output_file, index=False)
 
 # Print results to terminal

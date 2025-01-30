@@ -1,21 +1,15 @@
 import pandas as pd
 
-# Load train and test CSV files
-train_csv = "plots/object_detection_using_yolov5/object_detection_counterfactual_summary_train.csv"
-test_csv = "plots/object_detection_using_yolov5/object_detection_counterfactual_summary_test.csv"
+# Load the object detection-based masking results CSV file
+object_detection_csv = "plots/object_detection_masking_results.csv"
 
-# Load data
-train_data = pd.read_csv(train_csv)
-test_data = pd.read_csv(test_csv)
-
-# Combine train and test data
-data = pd.concat([train_data, test_data], ignore_index=True)
+data = pd.read_csv(object_detection_csv)
 
 # Initialize metrics dictionary
 metrics = []
 
 # Total entries and total time
-total_time = data["Processing Time (s)"].sum()
+total_time = data["Time Taken (s)"].sum()
 total_entries = len(data)
 
 # Initialize overall counters
@@ -25,7 +19,7 @@ overall_ce_not_found = 0
 # Process each prediction class (GO and STOP)
 for prediction_class in ["GO", "STOP"]:
     # Filter data by the initial prediction class
-    class_data = data[data["Initial Prediction"] == prediction_class]
+    class_data = data[data["Prediction (Before Masking)"] == prediction_class]
     
     # Total cases for this class
     total_cases = class_data.shape[0]
@@ -91,7 +85,7 @@ metrics.append({
 metrics.append({
     "Metrics": "Total Time Taken",
     "Total Count": "",
-    "Count": f"{total_time:.2f} seconds",
+    "Count": f"{total_time:.2f}",
     "Percentage": ""
 })
 
@@ -99,9 +93,9 @@ metrics.append({
 summary_table = pd.DataFrame(metrics)
 
 # Save to CSV
-output_file = "plots/object_detection_using_yolov5/object_detection_summary.csv"
+output_file = "plots/object_detection_summary.csv"
 summary_table.to_csv(output_file, index=False)
 
 # Print results to terminal
-print("\nObject Detection Masking Results:")
+print("\nObject Detection-Based Masking Results:")
 print(summary_table)

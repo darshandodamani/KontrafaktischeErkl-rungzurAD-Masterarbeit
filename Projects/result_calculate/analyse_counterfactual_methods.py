@@ -1,10 +1,10 @@
 import pandas as pd
 
 # Paths to result CSV files
-grid_csv = "plots/grid_based_masking_images/grid_based_summary.csv"
-object_detection_csv = "plots/object_detection_using_yolov5/object_detection_summary.csv"
-lime_on_images_csv = "plots/lime_on_images/lime_on_image_masking_summary.csv"
-lime_on_latent_csv = "plots/lime_plots/lime_latent_features_summary.csv"
+grid_csv = "plots/grid_based_summary.csv"
+object_detection_csv = "plots/object_detection_summary.csv"
+lime_on_images_csv = "plots/lime_on_image_summary.csv"
+lime_on_latent_csv = "plots/lime_on_latent_summary.csv"
 
 # Load summary CSVs into DataFrames and ensure numeric columns are converted correctly
 grid_data = pd.read_csv(grid_csv)
@@ -35,8 +35,8 @@ def extract_metrics(data, method_name):
         "Total Entries": total_entries,
         "Total GO Cases": total_go_cases,
         "Total STOP Cases": total_stop_cases,
-        "GO (CF %)": f"{round((data.loc[data['Metrics'] == 'GO (Counterfactual Found)', 'Count'].values[0] / total_go_cases) * 100, 2)}%",
-        "STOP (CF %)": f"{round((data.loc[data['Metrics'] == 'STOP (Counterfactual Found)', 'Count'].values[0] / total_stop_cases) * 100, 2)}%"
+        # "GO (CF %)": f"{round((data.loc[data['Metrics'] == 'GO (Counterfactual Found)', 'Count'].values[0] / total_go_cases) * 100, 2)}%",
+        # "STOP (CF %)": f"{round((data.loc[data['Metrics'] == 'STOP (Counterfactual Found)', 'Count'].values[0] / total_stop_cases) * 100, 2)}%"
     }
     return metrics
 

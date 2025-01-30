@@ -1,17 +1,11 @@
 import pandas as pd
 
-# Load train and test CSV files
-train_csv = "plots/lime_on_images/lime_on_image_masking_train_results.csv"
-test_csv = "plots/lime_on_images/lime_on_image_masking_test_results.csv"
+# Load the LIME on latent features masking results CSV file
+lime_latent_csv = "plots/lime_on_image_masking_results.csv"
 
-# Read the CSV files
-train_data = pd.read_csv(train_csv)
-test_data = pd.read_csv(test_csv)
+data = pd.read_csv(lime_latent_csv)
 
-# Combine train and test data
-data = pd.concat([train_data, test_data], ignore_index=True)
-
-# Initialize metrics list
+# Initialize metrics dictionary
 metrics = []
 
 # Total entries and total time
@@ -91,7 +85,7 @@ metrics.append({
 metrics.append({
     "Metrics": "Total Time Taken",
     "Total Count": "",
-    "Count": f"{total_time:.2f} seconds",
+    "Count": f"{total_time:.2f}",
     "Percentage": ""
 })
 
@@ -99,9 +93,9 @@ metrics.append({
 summary_table = pd.DataFrame(metrics)
 
 # Save to CSV
-output_file = "plots/lime_on_images/lime_on_image_masking_summary.csv"
+output_file = "plots/lime_on_image_summary.csv"
 summary_table.to_csv(output_file, index=False)
 
 # Print results to terminal
-print("\nLIME on Image Masking Results:")
+print("\nLIME on Latent Features Masking Results:")
 print(summary_table)
