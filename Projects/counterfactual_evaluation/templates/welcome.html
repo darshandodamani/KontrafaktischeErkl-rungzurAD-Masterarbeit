@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome to the Counterfactual Evaluation Study</title>
+</head>
+<body>
+    <h1>Welcome to the Counterfactual Explanation Study</h1>
+    
+    <p><strong>What is a Counterfactual Explanation?</strong></p>
+    <p>A counterfactual explanation answers the question: <em>"What needs to change in an input to get a different AI prediction?"</em></p>
+    
+    <p>Example: If an AI system classifies a traffic image as <strong>STOP</strong>, a counterfactual explanation shows how the image needs to change to be classified as <strong>GO</strong>.</p>
+    
+    <h2>How to Evaluate?</h2>
+    <p>Compare the original and counterfactual images and rate them based on these factors:</p>
+
+    <ul>
+        <li><strong>Interpretability:</strong> Is the change understandable?</li>
+        <li><strong>Plausibility:</strong> Does the counterfactual look realistic?</li>
+        <li><strong>Actionability:</strong> Can this change be acted upon?</li>
+        <li><strong>Trust in AI:</strong> Does this explanation increase confidence?</li>
+        <li><strong>Visual Coherence:</strong> Are only relevant parts changed?</li>
+    </ul>
+
+    <p>Enter your Participant ID to start:</p>
+    <form method="POST">
+        <label>Participant ID:</label>
+        <input type="text" name="participant_id" required>
+        <button type="submit">Start Evaluation</button>
+    </form>
+</body>
+</html>
