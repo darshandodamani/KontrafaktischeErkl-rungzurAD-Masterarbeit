@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Evaluate Counterfactual Explanation</title>
+    <script>
+        function showExplanation(metric) {
+            let explanations = {
+                "interpretability": "Does the counterfactual make sense? Example: If a STOP sign is removed, does the AI now classify it as GO?",
+                "plausibility": "Does the counterfactual look realistic? Example: If an object is removed, does the image still look natural?",
+                "actionability": "Could a person use this information to make a real-world decision?",
+                "trust": "Does this explanation make you more confident in the AI system?",
+                "coherence": "Does the image change only the necessary parts?"
+            };
+            alert(explanations[metric]);
+        }
+    </script>
+</head>
+<body>
+    <h1>Evaluate Counterfactual Explanation</h1>
+
+    <h3>Original Image</h3>
+    <img src="{{ images['original'] }}" width="300"><br>
+    <p><strong>Actaual Prediction:</strong> {{ images['original_label'] }}</p>
+
+    <h3>Counterfactual Image</h3>
+    <img src="{{ images['counterfactual'] }}" width="300"><br>
+    <p><strong>Classifier Prediction for CE:</strong> {{ images['cf_label'] }}</p><br>
+
+    <form method="POST">
+        <input type="hidden" name="image_pair" value="{{ image_pair_idx }}">
+
+        <label>Interpretability (1-5):</label>
+        <input type="number" name="interpretability" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('interpretability')">?</button><br>
+
+        <label>Plausibility (1-5):</label>
+        <input type="number" name="plausibility" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('plausibility')">?</button><br>
+
+        <label>Actionability (1-5):</label>
+        <input type="number" name="actionability" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('actionability')">?</button><br>
+
+        <label>Trust in AI (1-5):</label>
+        <input type="number" name="trust" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('trust')">?</button><br>
+
+        <label>Visual Coherence (1-5):</label>
+        <input type="number" name="coherence" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('coherence')">?</button><br>
+
+        <label>Additional Comments:</label><br>
+        <textarea name="comments"></textarea><br><br>
+
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
