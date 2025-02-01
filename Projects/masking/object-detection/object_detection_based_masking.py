@@ -102,19 +102,16 @@ def process_object_detection_masking():
         image_filename = row["Image File"]
         image_path = os.path.join(test_dir, image_filename)
 
-        # Load image and convert to tensor
         image = Image.open(image_path).convert("RGB")
         input_image = transform(image).unsqueeze(0).to(device)
 
-        # Default values
         counterfactual_found = False
         final_prediction = row["Prediction (Before Masking)"]
-        grid_size_found = None
-        grid_position_found = None
+        grid_size_found = "N/A"
+        grid_position_found = "N/A"
         confidence_final_str = "N/A"
-        metrics = {}
+        metrics = {"SSIM": "", "MSE": "", "PSNR": "", "UQI": "", "VIFP": ""}
 
-        # Perform YOLO object detection
         results = yolo_model(image)
         detections = results.xyxy[0]
         objects_detected = [results.names[int(det[5])] for det in detections] if detections.numel() > 0 else []
@@ -122,8 +119,8 @@ def process_object_detection_masking():
         if detections.numel() > 0:
             for det in detections:
                 x_min, y_min, x_max, y_max = map(int, det[:4])
-                grid_size = f"({x_max - x_min}, {y_max - y_min})"
-                grid_position = f"({x_min}, {y_min})"
+                grid_size_found = f"({x_max - x_min}, {y_max - y_min})"
+                grid_position_found = f"({x_min}, {y_min})"
 
                 masked_image = input_image.clone()
                 masked_image[:, :, y_min:y_max, x_min:x_max] = 0
@@ -137,32 +134,15 @@ def process_object_detection_masking():
 
                 if final_prediction != row["Prediction (Before Masking)"]:
                     counterfactual_found = True
-                    grid_size_found = grid_size
-                    grid_position_found = grid_position
-
-                    # Calculate metrics
                     metrics = calculate_image_metrics(input_image, masked_image)
-
-                    # Save plot
-                    plot_filename = os.path.join(plot_dir, f"{image_filename}_mask_{x_min}_{y_min}.png")
-                    plot_and_save_images(input_image, decoder(encoder(input_image)[2]), masked_image, decoder(latent_vector_masked), plot_filename)
-                    break  # Stop after first counterfactual found
+                    break
 
         end_time = time.time()
         total_time_taken = round(end_time - start_time + row["Time Taken (s)"], 5)
 
-        df_results.loc[df_results['Image File'] == image_filename, [
-            "Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found",
-            "Grid Size", "Grid Position", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Time Taken (s)"
-        ]] = [
-            final_prediction, confidence_final_str, counterfactual_found, grid_size_found, grid_position_found,
-            metrics.get("SSIM", ""), metrics.get("MSE", ""), metrics.get("PSNR", ""),
-            metrics.get("UQI", ""), metrics.get("VIFP", ""), ", ".join(objects_detected), total_time_taken
-        ]
+        df_results.loc[df_results['Image File'] == image_filename, ["Prediction (After Masking)", "Confidence (After Masking)", "Counterfactual Found", "Grid Size", "Grid Position", "SSIM", "MSE", "PSNR", "UQI", "VIFP", "Objects Detected", "Time Taken (s)"]] = [final_prediction, confidence_final_str, counterfactual_found, grid_size_found, grid_position_found, metrics["SSIM"], metrics["MSE"], metrics["PSNR"], metrics["UQI"], metrics["VIFP"], ", ".join(objects_detected), total_time_taken]
 
-        df_results.to_csv(output_csv, index=False)
-
+    df_results.to_csv(output_csv, index=False)
     print(f"Object detection-based masking results saved to {output_csv}")
-
 
 process_object_detection_masking()
