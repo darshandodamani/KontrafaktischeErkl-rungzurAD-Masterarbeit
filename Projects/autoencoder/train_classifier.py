@@ -19,8 +19,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Hyperparameters
 input_size = 128  # Latent space size from VAE (ensure it matches the latent space size of the trained VAE)
 hidden_size = 128
-#output_size = 2  # STOP or GO
-output_size = 4  # STOP or GO or RIGHT or LEFT
+output_size = 2  # STOP or GO
 num_epochs = 20
 learning_rate = 0.001
 dropout_rate = 0.5  # Dropout rate for the classifier
@@ -114,12 +113,12 @@ for epoch in range(num_epochs):
     if (epoch + 1) % 5 == 0:
         torch.save(
             classifier.state_dict(),
-            f"model/epochs_500_latent_128/classifier_epoch_{epoch+1}_4_classes.pth",
+            f"model/epochs_500_latent_128/classifier_epoch_{epoch+1}.pth",
         )
-        print(f"Classifier checkpoint saved at epoch {epoch+1}_4_classes")
+        print(f"Classifier checkpoint saved at epoch {epoch+1}")
 
 # Save the final trained classifier
-torch.save(classifier.state_dict(), "model/epochs_500_latent_128/classifier_final_4_classes.pth")
+torch.save(classifier.state_dict(), "model/epochs_500_latent_128/classifier_final.pth")
 print("Classifier saved successfully!")
 
 # Plot the training loss and accuracy
@@ -142,12 +141,12 @@ plt.title("Training Accuracy")
 plt.legend()
 
 plt.tight_layout()
-plt.savefig("classifier_training_loss_accuracy_4_classes.png")
+plt.savefig("classifier_training_loss_accuracy.png")
 # Create directory if it doesn't exist
 os.makedirs("plots/classifier_plots/", exist_ok=True)
 
 # Save the plot in the specified directory
 plt.savefig(
-    f"plots/classifier_plots/classifier_training_loss_accuracy_for_{num_epochs}_epochs_{input_size}_LF_4_classes.png"
+    f"plots/classifier_plots/classifier_training_loss_accuracy_for_{num_epochs}_epochs_{input_size}_LF.png"
 )
 plt.show()
