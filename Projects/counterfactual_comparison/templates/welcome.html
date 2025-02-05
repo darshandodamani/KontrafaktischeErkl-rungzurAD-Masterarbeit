@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to the Counterfactual Evaluation Study</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-6">
+
+    <div class="bg-white shadow-xl rounded-2xl p-8 max-w-3xl w-full text-center animate-fadeIn">
+        <h1 class="text-3xl font-extrabold text-gray-800 mb-4">🚀 Welcome to the Counterfactual Explanation Study</h1>
+        
+        <div class="bg-blue-50 p-4 rounded-lg">
+            <p class="text-gray-700 text-lg font-semibold">🔍 <strong>What is a Counterfactual Explanation?</strong></p>
+            <p class="text-gray-600 mt-2">
+                A counterfactual explanation answers the question: 
+                <em class="text-blue-500">"What needs to change in an input to get a different AI prediction?"</em>
+            </p>
+            <p class="text-gray-700 mt-3">
+                <strong>Example:</strong> If an AI system classifies a traffic image as 
+                <span class="bg-red-500 text-white px-2 py-1 rounded-md">STOP</span>, 
+                a counterfactual explanation shows how the image needs to change to be classified as 
+                <span class="bg-green-500 text-white px-2 py-1 rounded-md">GO</span>.
+            </p>
+        </div>
+
+        <h2 class="text-xl font-bold text-gray-700 mt-6">🛠 How to Evaluate?</h2>
+        <div class="bg-blue-50 p-4 rounded-lg mt-4">
+            <p class="text-gray-700 font-semibold">📷 You will be shown:</p>
+            <ul class="list-disc list-inside text-gray-600 text-md">
+                <li>An <strong>original image</strong> from an AI-driven vehicle.</li>
+                <li>Three different <strong>counterfactual images</strong>.</li>
+            </ul>
+        </div>
+        <p class="text-gray-600 mt-2">Compare the original and counterfactual images and rate them based on these factors:</p>
+
+        <div class="mt-4 text-left bg-gray-50 p-4 rounded-lg">
+            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                <li><strong class="text-blue-600">Interpretability:</strong> Is the change understandable?</li>
+                <li><strong class="text-blue-600">Plausibility:</strong> Does the counterfactual look realistic?</li>
+                <li><strong class="text-blue-600">Actionability:</strong> Can this change be acted upon?</li>
+                <li><strong class="text-blue-600">Trust in AI:</strong> Does this explanation increase confidence?</li>
+                <li><strong class="text-blue-600">Visual Coherence:</strong> Are only relevant parts changed?</li>
+            </ul>
+        </div>
+
+        <button onclick="location.href='{{ url_for('evaluate') }}'"
+                class="mt-6 px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl shadow-lg
+                       hover:bg-blue-700 transition-all transform hover:scale-105">
+            🚗 Start Evaluation
+        </button>
+    </div>
+
+</body>
+</html>
