@@ -11,7 +11,7 @@ summary_statistics = df.describe()
 summary_statistics.to_csv("summary_statistics.csv")
 
 # Define evaluation metrics
-metrics = ["Interpretability", "Plausibility", "Actionability", "Trust in AI", "Visual Coherence"]
+metrics = ["Interpretability", "Plausibility", "Visual Coherence"]
 
 # Generate histograms for rating distributions
 plt.figure(figsize=(12, 6))
