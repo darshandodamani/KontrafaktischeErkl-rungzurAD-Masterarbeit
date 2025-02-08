@@ -30,12 +30,14 @@ df = pd.concat([grid_df, object_detection_df, lime_image_df, lime_latent_df], ig
 df = df[["Method", "Image File", "Counterfactual Found", "PSNR", "SSIM", "MSE", "UQI", "VIFP"]]
 df["Counterfactual Found"] = df["Counterfactual Found"].astype(str)  # Convert for visualization
 
+df_true = df[df["Counterfactual Found"] == "True"]
+
 # 🔹 Function to Save Boxplots
 def save_boxplot(metric):
     plt.figure(figsize=(10, 6))
-    sns.boxplot(data=df, x="Counterfactual Found", y=metric, hue="Method")
+    sns.boxplot(data=df_true, x="Counterfactual Found", y=metric, hue="Method")
     plt.title(f"{metric} vs. Counterfactual Found")
-    plt.savefig(f"plots/{metric.lower()}_boxplot.png")  # Save instead of show
+    plt.savefig(f"plots/sanity_check/{metric.lower()}_boxplot.png")  # Save instead of show
     plt.close()  # Prevent showing errors
 
 # Generate and save plots
@@ -55,7 +57,7 @@ summary = df.groupby(["Method", "Counterfactual Found"]).agg({
 summary.columns = [' '.join(col).strip() if isinstance(col, tuple) else col for col in summary.columns]
 
 # Save to Excel
-excel_path = "plots/sanity_check_image_vs_ce_metrics.xlsx"
+excel_path = "plots/sanity_check/sanity_check_image_vs_ce_metrics.xlsx"
 summary.to_excel(excel_path, index=False)
 
 print(f"Sanity check summary saved to: {excel_path}")
