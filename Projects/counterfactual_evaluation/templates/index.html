@@ -7,6 +7,8 @@
             let explanations = {
                 "interpretability": "Does the counterfactual make sense? Example: If a STOP sign is removed, does the AI now classify it as GO?",
                 "plausibility": "Does the counterfactual look realistic? Example: If an object is removed, does the image still look natural?",
+                "actionability": "Could a person use this information to make a real-world decision?",
+                "trust": "Does this explanation make you more confident in the AI system?",
                 "coherence": "Does the image change only the necessary parts?"
             };
             alert(explanations[metric]);
@@ -34,6 +36,14 @@
         <label>Plausibility (1-5):</label>
         <input type="number" name="plausibility" min="1" max="5" required>
         <button type="button" onclick="showExplanation('plausibility')">?</button><br>
+
+        <label>Actionability (1-5):</label>
+        <input type="number" name="actionability" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('actionability')">?</button><br>
+
+        <label>Trust in AI (1-5):</label>
+        <input type="number" name="trust" min="1" max="5" required>
+        <button type="button" onclick="showExplanation('trust')">?</button><br>
 
         <label>Visual Coherence (1-5):</label>
         <input type="number" name="coherence" min="1" max="5" required>
