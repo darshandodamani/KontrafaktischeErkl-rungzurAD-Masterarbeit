@@ -67,6 +67,6 @@ validity_df.to_csv(VALIDITY_CSV_PATH, index=False)
 # ------------------------------------------------------------------------------
 # Print Validity Summary
 # ------------------------------------------------------------------------------
-print("\n📊 Validity Summary Across Methods:")
+print("\n Validity Summary Across Methods:")
 print(validity_df.to_string(index=False))
-print(f"\n✅ Validity summary saved to: {VALIDITY_CSV_PATH}")
+print(f"\n Validity summary saved to: {VALIDITY_CSV_PATH}")

@@ -6,9 +6,9 @@
     <title>Welcome to the Counterfactual Evaluation Study</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-6">
+<body class="bg-gray-300 flex items-center justify-center min-h-screen p-6">
 
-    <div class="bg-white shadow-xl rounded-2xl p-8 max-w-3xl w-full text-center animate-fadeIn">
+    <div class="w-full max-w-screen-xl bg-white shadow-xl rounded-2xl p-8 text-center animate-fadeIn">
         <h1 class="text-3xl font-extrabold text-gray-800 mb-4">🚀 Welcome to the Counterfactual Explanation Study</h1>
         
         <div class="bg-blue-50 p-4 rounded-lg">
@@ -37,15 +37,17 @@
 
         <div class="mt-4 text-left bg-gray-50 p-4 rounded-lg">
             <ul class="list-disc list-inside text-gray-700 space-y-2">
-                <li><strong class="text-blue-600">Interpretability:</strong> Is the change understandable?</li>
-                <li><strong class="text-blue-600">Plausibility:</strong> Does the counterfactual look realistic?</li>
-                <li><strong class="text-blue-600">Actionability:</strong> Can this change be acted upon?</li>
-                <li><strong class="text-blue-600">Trust in AI:</strong> Does this explanation increase confidence?</li>
-                <li><strong class="text-blue-600">Visual Coherence:</strong> Are only relevant parts changed?</li>
+                <li><strong class="text-blue-600">Interpretability:</strong> Is the change understandable? Interpretability is about clarity—making sure the explanation is so simple that anyone can see exactly what change would alter the car’s decision.</li>
+                <li>Imagine an autonomous vehicle slows down because it detects a pedestrian on the sidewalk. A counterfactual explanation might show the same scene with the pedestrian removed. If you can clearly see that the car would have maintained its speed if the pedestrian weren’t there, the explanation is interpretable. In simple terms, the viewer easily understands that the presence of the pedestrian was the key reason for slowing down.</li>
+                <li><strong class="text-blue-600">Plausibility:</strong> Does the counterfactual look realistic? Plausibility checks whether the modified (counterfactual) image still looks like a realistic driving scene. The explanation must seem like something that could naturally occur on the road.</li>
+                <li>Suppose the car decides to change lanes because it detected an obstacle on its current path. A plausible counterfactual explanation might show that if the obstacle were not present, the car would stay in its lane. However, if the modified image looks bizarre—say, the road suddenly appears warped or other vehicles vanish in an unrealistic manner—the explanation isn’t plausible. It should look like a scene that could actually happen on the road.
+                </li>
+                <li><strong class="text-blue-600">Visual Coherence:</strong> Are only relevant parts changed? Visual coherence means that only the parts of the image that need to change are altered, while everything else remains the same. This helps you focus on the exact element that influenced the decision.</li>
+                <li>Imagine the vehicle stops because it detected a stray object (like a fallen branch) in its path. A visually coherent counterfactual explanation would only remove or change that object, leaving the rest of the scene—such as lane markings, buildings, and other vehicles—untouched. If the explanation instead shows an entirely different road or background, it loses coherence because it doesn’t clearly isolate the effect of the stray object on the decision.</li>
             </ul>
         </div>
 
-        <button onclick="location.href='{{ url_for('evaluate') }}'"
+        <button onclick="location.href='{{ request.url_for('evaluate') }}'"
                 class="mt-6 px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl shadow-lg
                        hover:bg-blue-700 transition-all transform hover:scale-105">
             🚗 Start Evaluation
